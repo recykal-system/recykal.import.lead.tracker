@@ -1412,3 +1412,124 @@ function openEditOrder() {
     '<div class="form-group full"><label>Notes</label><textarea id="eo-notes">'+esc(o.notes||'')+'</textarea></div>' +
     '</div><div class="form-actions">' +
     '<button class="btn-cancel" onclick="openOrder
+   (\''+o.id+'\')">Cancel</button>' +
+    '<button class="btn-save" onclick="saveEditOrder(\''+o.id+'\')">Save Changes</button></div></div>';
+}
+
+async function saveEditOrder(id) {
+  const buyerSel = document.getElementById('eo-buyer');
+  const supplierSel = document.getElementById('eo-supplier');
+  const buyerLead = buyerLeadsList.find(function(l){return l.id===buyerSel.value;});
+  const supplierLead = supplierLeadsList.find(function(l){return l.id===supplierSel.value;});
+  const payload = {
+    id,
+    order_ref: document.getElementById('eo-ref').value.trim(),
+    status: document.getElementById('eo-status').value,
+    buyer_lead_id: buyerSel.value,
+    buyer_name: buyerLead ? buyerLead.company_name : '',
+    supplier_lead_id: supplierSel.value,
+    supplier_name: supplierLead ? supplierLead.company_name : '',
+    material: document.getElementById('eo-material').value,
+    qty: document.getElementById('eo-qty').value || null,
+    unit: document.getElementById('eo-unit').value,
+    currency: document.getElementById('eo-currency').value,
+    buyer_price: document.getElementById('eo-buyer-price').value || null,
+    supplier_price: document.getElementById('eo-supplier-price').value || null,
+    incoterms: document.getElementById('eo-incoterms').value,
+    payment_terms: document.getElementById('eo-payment-terms').value.trim(),
+    container_number: document.getElementById('eo-container').value.trim(),
+    bl_number: document.getElementById('eo-bl').value.trim(),
+    vessel_name: document.getElementById('eo-vessel').value.trim(),
+    loading_port: document.getElementById('eo-loading-port').value.trim(),
+    discharge_port: document.getElementById('eo-discharge-port').value.trim(),
+    etd: document.getElementById('eo-etd').value,
+    eta: document.getElementById('eo-eta').value,
+    notes: document.getElementById('eo-notes').value.trim(),
+    by: currentUser
+  };
+  const res = await api('updateOrder', payload);
+  if (res.success) {
+    Object.assign(currentOrder, payload);
+    if (buyerLead) currentOrder.buyer_company = buyerLead.company_name;
+    if (supplierLead) currentOrder.supplier_company = supplierLead.company_name;
+    const idx = allOrders.findIndex(function(o){return o.id===id;});
+    if (idx>=0) Object.assign(allOrders[idx], currentOrder);
+    localStorage.removeItem('rclt_orders');
+    openOrder(id);
+    applyOrderFilters();
+  } else { alert('Error: '+(res.error||'Unknown')); }
+}
+
+function openAddOrderModal() {
+  if (!buyerLeadsList.length || !supplierLeadsList.length) {
+    const buyerCached = localStorage.getItem('rclt_leads_buyer');
+    const supplierCached = localStorage.getItem('rclt_leads_supplier');
+    if (buyerCached) buyerLeadsList = JSON.parse(buyerCached);
+    if (supplierCached) supplierLeadsList = JSON.parse(supplierCached);
+  }
+  const bSel = document.getElementById('ao-buyer');
+  const sSel = document.getElementById('ao-supplier');
+  bSel.innerHTML = '<option value="">Select buyer&#8230;</option>' + buyerLeadsList.map(function(l){return '<option value="'+esc(l.id)+'">'+esc(l.company_name)+' ('+esc(l.country)+')</option>';}).join('');
+  sSel.innerHTML = '<option value="">Select supplier&#8230;</option>' + supplierLeadsList.map(function(l){return '<option value="'+esc(l.id)+'">'+esc(l.company_name)+' ('+esc(l.country)+')</option>';}).join('');
+  const mSel = document.getElementById('ao-material');
+  mSel.innerHTML = '<option value="">Select&#8230;</option>' + ALL_MATERIALS.map(function(m){return '<option>'+m+'</option>';}).join('');
+  document.getElementById('add-order-error').style.display = 'none';
+  document.getElementById('add-order-modal').classList.add('open');
+}
+
+function closeAddOrderModal() {
+  document.getElementById('add-order-modal').classList.remove('open');
+}
+
+async function saveOrder() {
+  const buyerSel = document.getElementById('ao-buyer');
+  const supplierSel = document.getElementById('ao-supplier');
+  const material = document.getElementById('ao-material').value;
+  const errEl = document.getElementById('add-order-error');
+  if (!buyerSel.value || !supplierSel.value || !material) {
+    errEl.textContent = 'Buyer, supplier, and material are required.';
+    errEl.style.display = 'block'; return;
+  }
+  const buyerLead = buyerLeadsList.find(function(l){return l.id===buyerSel.value;});
+  const supplierLead = supplierLeadsList.find(function(l){return l.id===supplierSel.value;});
+  const btn = document.getElementById('add-order-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    const res = await api('addOrder', {
+      order_ref: document.getElementById('ao-ref').value.trim(),
+      status: document.getElementById('ao-status').value,
+      buyer_lead_id: buyerSel.value,
+      buyer_name: buyerLead ? buyerLead.company_name : '',
+      supplier_lead_id: supplierSel.value,
+      supplier_name: supplierLead ? supplierLead.company_name : '',
+      material,
+      qty: document.getElementById('ao-qty').value || null,
+      unit: document.getElementById('ao-unit').value,
+      currency: document.getElementById('ao-currency').value,
+      buyer_price: document.getElementById('ao-buyer-price').value || null,
+      supplier_price: document.getElementById('ao-supplier-price').value || null,
+      incoterms: document.getElementById('ao-incoterms').value,
+      payment_terms: document.getElementById('ao-payment-terms').value.trim(),
+      container_number: document.getElementById('ao-container').value.trim(),
+      bl_number: document.getElementById('ao-bl').value.trim(),
+      vessel_name: document.getElementById('ao-vessel').value.trim(),
+      loading_port: document.getElementById('ao-loading-port').value.trim(),
+      discharge_port: document.getElementById('ao-discharge-port').value.trim(),
+      etd: document.getElementById('ao-etd').value,
+      eta: document.getElementById('ao-eta').value,
+      notes: document.getElementById('ao-notes').value.trim(),
+      by: currentUser
+    });
+    btn.disabled = false; btn.textContent = 'Add Order';
+    if (res.error) { errEl.textContent = 'Error: '+res.error; errEl.style.display='block'; return; }
+    localStorage.removeItem('rclt_orders');
+    closeAddOrderModal();
+    await loadOrders();
+  } catch(e) {
+    btn.disabled = false; btn.textContent = 'Add Order';
+    errEl.textContent = 'Network error: '+e.message; errEl.style.display='block';
+  }
+}
+</script>
+</body>
+</html>
