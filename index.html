@@ -161,9 +161,7 @@
     <h2 style="font-size:20px;font-weight:700;color:#0f3d2e;margin-bottom:4px;">Recykal Lead Tracker</h2>
     <p style="font-size:13px;color:#64748b;margin-bottom:28px;">Sign in with your @recykal.com account</p>
     <div id="g_id_onload"
-         data-client_id="990583974585-urcqsg4igf0m4r42h3srhr7qeodk6uk0.apps.googleusercontent.com"
-         data-callback="handleCredentialResponse"
-         data-auto_prompt="true">
+         data-client_id="990583974585-urcqsg4igf0m4r42h3srhr7qeodk6uk0.apps.googleusercontent.com">
     </div>
     <div class="g_id_signin"
          data-type="standard"
@@ -528,6 +526,16 @@ window.onload = function() {
     } catch(e) {}
   }
   document.getElementById('signin-page').style.display = 'flex';
+  google.accounts.id.initialize({
+    client_id: '990583974585-urcqsg4igf0m4r42h3srhr7qeodk6uk0.apps.googleusercontent.com',
+    callback: handleCredentialResponse,
+    auto_select: true
+  });
+  google.accounts.id.renderButton(
+    document.querySelector('.g_id_signin'),
+    { type: 'standard', size: 'large', theme: 'outline', text: 'sign_in_with', shape: 'rectangular', logo_alignment: 'left' }
+  );
+  google.accounts.id.prompt();
 };
 
 // ── API ──
@@ -993,10 +1001,10 @@ function renderDashboard() {
   if (typeFilter) rfqs = rfqs.filter(function(r){ return r.lead_type===typeFilter; });
   if (cutoff) rfqs = rfqs.filter(function(r){ return r.created_at && new Date(r.created_at) >= cutoff; });
 
+  // KPIs
   const converted = rfqs.filter(function(r){return r.status==='Converted';}).length;
   const convRate = rfqs.length ? Math.round(converted/rfqs.length*100) : 0;
   const activeLeads = leads.filter(function(l){return l.stage!=='Not Workable'&&l.stage!=='Not Interested';}).length;
-
   document.getElementById('kpi-row').innerHTML = [
     {label:'Total Leads',value:leads.length,sub:typeFilter||'Buyers + Suppliers'},
     {label:'Active Leads',value:activeLeads,sub:'excl. not workable'},
@@ -1008,6 +1016,7 @@ function renderDashboard() {
     return '<div class="kpi-card"><div class="kpi-label">'+k.label+'</div><div class="kpi-value">'+k.value+'</div><div class="kpi-sub">'+k.sub+'</div></div>';
   }).join('');
 
+  // Stage donut
   mkChart('chart-stage','doughnut',
     STAGES,
     [leads.filter(function(l){return l.stage===STAGES[0];}).length,
@@ -1021,6 +1030,7 @@ function renderDashboard() {
     {plugins:{legend:{position:'right',labels:{font:{size:11},boxWidth:12}}}}
   );
 
+  // RFQ status donut
   mkChart('chart-rfq-status','doughnut',
     RFQ_STATUSES,
     RFQ_STATUSES.map(function(s){return rfqs.filter(function(r){return r.status===s;}).length;}),
@@ -1028,6 +1038,7 @@ function renderDashboard() {
     {plugins:{legend:{position:'right',labels:{font:{size:11},boxWidth:12}}}}
   );
 
+  // Timeline — leads added per month
   const monthBuckets = {};
   const numMonths = months > 0 ? months : 12;
   for (let i=numMonths-1; i>=0; i--) {
@@ -1048,6 +1059,7 @@ function renderDashboard() {
     {plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}
   );
 
+  // Top countries
   const cmap={};
   leads.forEach(function(l){ const c=(l.country||'Unknown').trim(); cmap[c]=(cmap[c]||0)+1; });
   const countries=Object.entries(cmap).sort(function(a,b){return b[1]-a[1];}).slice(0,8);
@@ -1057,6 +1069,7 @@ function renderDashboard() {
     countries.map(function(e){return '<tr><td>'+esc(e[0])+'</td><td><strong>'+e[1]+'</strong></td><td><div class="progress-bar"><div class="progress-bar-fill" style="width:'+Math.round(e[1]/maxC*100)+'%"></div></div></td></tr>';}).join('') +
     '</tbody></table>' : '<span style="color:#94a3b8;font-size:12px">No data</span>';
 
+  // By team member
   const tmap={};
   TEAM.forEach(function(t){tmap[t]=0;});
   leads.forEach(function(l){if(l.assigned_to&&tmap[l.assigned_to]!==undefined)tmap[l.assigned_to]++;});
@@ -1064,6 +1077,7 @@ function renderDashboard() {
     {plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}
   );
 
+  // Top materials
   const mmap={};
   leads.forEach(function(l){
     parseMaterials(l.materials||'').forEach(function(m){
@@ -1077,6 +1091,7 @@ function renderDashboard() {
     mats.map(function(e){return '<tr><td><span class="mat-chip">'+esc(e[0])+'</span></td><td><strong>'+e[1]+'</strong></td><td><div class="progress-bar"><div class="progress-bar-fill" style="width:'+Math.round(e[1]/maxM*100)+'%"></div></div></td></tr>';}).join('') +
     '</tbody></table>' : '<span style="color:#94a3b8;font-size:12px">No materials data yet</span>';
 
+  // Funnel chart
   const funnelData = [
     leads.length,
     leads.filter(function(l){return ['Contacted','Interested','Negotiating','Deal Closed'].includes(l.stage);}).length,
@@ -1411,8 +1426,7 @@ function openEditOrder() {
     '<div class="form-group"><label>ETA</label><input id="eo-eta" type="date" value="'+esc(o.eta?o.eta.slice(0,10):'')+'" /></div>' +
     '<div class="form-group full"><label>Notes</label><textarea id="eo-notes">'+esc(o.notes||'')+'</textarea></div>' +
     '</div><div class="form-actions">' +
-    '<button class="btn-cancel" onclick="openOrder
-   (\''+o.id+'\')">Cancel</button>' +
+    '<button class="btn-cancel" onclick="openOrder(\''+o.id+'\')">Cancel</button>' +
     '<button class="btn-save" onclick="saveEditOrder(\''+o.id+'\')">Save Changes</button></div></div>';
 }
 
@@ -1533,3 +1547,4 @@ async function saveOrder() {
 </script>
 </body>
 </html>
+
