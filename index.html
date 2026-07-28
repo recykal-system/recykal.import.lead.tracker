@@ -30,7 +30,7 @@
   .table-wrap { padding: 16px 20px; }
   table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
   thead tr { background: #0f3d2e; color: #fff; }
-  th { padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; white-space: nowrap; }
+  th { padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; white-space: nowrap; position: sticky; top: 52px; background: #0f3d2e; z-index: 10; }
   tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .1s; cursor: pointer; }
   tbody tr:hover { background: #f0fdf4; }
   td { padding: 9px 12px; vertical-align: middle; }
@@ -113,6 +113,23 @@
   .info-row { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: #475569; margin-bottom: 4px; }
   .info-row span strong { color: #1a202c; }
 
+  /* ── Orders ── */
+  .badge-draft        { background: #f1f5f9; color: #475569; }
+  .badge-confirmed    { background: #dbeafe; color: #1d4ed8; }
+  .badge-inproduction { background: #fef9c3; color: #854d0e; }
+  .badge-shipped      { background: #fed7aa; color: #9a3412; }
+  .badge-atport       { background: #e0f2fe; color: #0369a1; }
+  .badge-delivered    { background: #dcfce7; color: #166534; }
+  .badge-completed    { background: #bbf7d0; color: #14532d; }
+  .badge-cancelled    { background: #fee2e2; color: #991b1b; }
+  .margin-pos { color: #166534; font-weight: 700; }
+  .margin-neg { color: #991b1b; font-weight: 700; }
+  .payment-item { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px; padding: 8px 12px; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; }
+  .payment-item .pay-amount { font-weight: 700; color: #0f3d2e; font-size: 13px; }
+  .payment-item .pay-meta { font-size: 11px; color: #64748b; margin-top: 2px; }
+  .pay-total-row { display: flex; justify-content: space-between; font-size: 12px; padding: 6px 0; border-top: 1px solid #e2e8f0; margin-top: 4px; }
+  .pay-total-row strong { color: #0f3d2e; }
+
   /* ── Dashboard ── */
   #dashboard-wrap { display: none; padding: 20px; }
   .dash-controls { background: #fff; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
@@ -175,6 +192,7 @@
   <div class="tab"        id="tab-supplier" onclick="switchTab('supplier')">Suppliers</div>
   <div class="tab"        id="tab-rfqs"     onclick="switchTab('rfqs')">All RFQs</div>
   <div class="tab"        id="tab-dashboard" onclick="switchTab('dashboard')">Dashboard</div>
+  <div class="tab"        id="tab-orders"    onclick="switchTab('orders')">Orders</div>
 </div>
 
 <!-- LEAD FILTERS -->
@@ -252,6 +270,36 @@
     </tr></thead>
     <tbody id="leads-body">
       <tr class="loading-row"><td colspan="8"><span class="spinner"></span> Loading&#8230;</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ORDERS FILTERS -->
+<div class="filters" id="orders-filters" style="display:none">
+  <div class="filter-group"><label>Search</label><input type="text" id="of-search" placeholder="Buyer / Supplier / Ref..." oninput="applyOrderFilters()" /></div>
+  <div class="filter-group"><label>Status</label>
+    <select id="of-status" onchange="applyOrderFilters()">
+      <option value="">All statuses</option>
+      <option>Draft</option><option>Confirmed</option><option>In Production</option>
+      <option>Shipped</option><option>At Port</option><option>Delivered</option>
+      <option>Completed</option><option>Cancelled</option>
+    </select>
+  </div>
+  <div class="filter-group"><label>Material</label><input type="text" id="of-material" placeholder="e.g. Milberry..." oninput="applyOrderFilters()" /></div>
+  <button class="btn-clear" onclick="clearOrderFilters()">Clear</button>
+  <button class="btn-add" onclick="openAddOrderModal()">+ Add Order</button>
+</div>
+
+<!-- ORDERS TABLE -->
+<div class="table-wrap" id="orders-table-wrap" style="display:none">
+  <table>
+    <thead><tr>
+      <th>Order Ref</th><th>Buyer</th><th>Supplier</th><th>Material</th>
+      <th>Qty</th><th>Buyer Price</th><th>Supplier Price</th><th>Margin/MT</th>
+      <th>Status</th><th>Container #</th><th>BL #</th><th>ETD</th><th>ETA</th>
+    </tr></thead>
+    <tbody id="orders-body">
+      <tr class="loading-row"><td colspan="13"><span class="spinner"></span> Loading&#8230;</td></tr>
     </tbody>
   </table>
 </div>
@@ -363,6 +411,54 @@
   </div>
 </div>
 
+<!-- ADD ORDER MODAL -->
+<div class="modal-overlay" id="add-order-modal">
+  <div class="modal" style="width:min(700px,95vw)">
+    <h3>Add New Order</h3>
+    <div class="error-banner" id="add-order-error"></div>
+    <div class="form-grid">
+      <div class="form-group"><label>Order Ref (auto if blank)</label><input id="ao-ref" type="text" placeholder="e.g. ORD-2024-001" /></div>
+      <div class="form-group"><label>Status</label>
+        <select id="ao-status">
+          <option>Draft</option><option selected>Confirmed</option><option>In Production</option>
+          <option>Shipped</option><option>At Port</option><option>Delivered</option>
+          <option>Completed</option><option>Cancelled</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Buyer Company *</label><select id="ao-buyer"><option value="">Select buyer&#8230;</option></select></div>
+      <div class="form-group"><label>Supplier Company *</label><select id="ao-supplier"><option value="">Select supplier&#8230;</option></select></div>
+      <div class="form-group"><label>Material *</label>
+        <select id="ao-material"><option value="">Select&#8230;</option></select>
+      </div>
+      <div class="form-group"><label>Qty</label><input id="ao-qty" type="number" placeholder="e.g. 25" /></div>
+      <div class="form-group"><label>Unit</label>
+        <select id="ao-unit"><option>MT</option><option>KG</option><option>TON</option></select>
+      </div>
+      <div class="form-group"><label>Currency</label>
+        <select id="ao-currency"><option>USD</option><option>EUR</option><option>GBP</option><option>INR</option><option>AED</option></select>
+      </div>
+      <div class="form-group"><label>Buyer Price / MT</label><input id="ao-buyer-price" type="number" placeholder="0.00" /></div>
+      <div class="form-group"><label>Supplier Price / MT</label><input id="ao-supplier-price" type="number" placeholder="0.00" /></div>
+      <div class="form-group"><label>Incoterms</label>
+        <select id="ao-incoterms"><option value="">&#8212;</option><option>FOB</option><option>CIF</option><option>CFR</option><option>EXW</option><option>DDP</option><option>FCA</option><option>CPT</option><option>CIP</option></select>
+      </div>
+      <div class="form-group"><label>Payment Terms</label><input id="ao-payment-terms" type="text" placeholder="e.g. 30% advance, 70% BL" /></div>
+      <div class="form-group"><label>Container Number</label><input id="ao-container" type="text" /></div>
+      <div class="form-group"><label>BL Number</label><input id="ao-bl" type="text" /></div>
+      <div class="form-group"><label>Vessel Name</label><input id="ao-vessel" type="text" /></div>
+      <div class="form-group"><label>Loading Port</label><input id="ao-loading-port" type="text" /></div>
+      <div class="form-group"><label>Discharge Port</label><input id="ao-discharge-port" type="text" /></div>
+      <div class="form-group"><label>ETD</label><input id="ao-etd" type="date" /></div>
+      <div class="form-group"><label>ETA</label><input id="ao-eta" type="date" /></div>
+      <div class="form-group full"><label>Notes</label><textarea id="ao-notes" rows="2"></textarea></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeAddOrderModal()">Cancel</button>
+      <button class="btn-save" id="add-order-save-btn" onclick="saveOrder()">Add Order</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API_URL = 'https://script.google.com/macros/s/AKfycbz-5hCQILfyN_26Y3ZTovQAiYYjrm15PQf4CCHsdLshmXC1_tUkGFgYyHw2YGzFy1mmvA/exec';
 const ALLOWED_DOMAIN = 'recykal.com';
@@ -373,7 +469,7 @@ const MATERIALS = {
   Copper:    ['Milberry','Candy','Birch','No 1 Copper','No 2 Copper','Cathode','Wire','Utensil','Berry'],
   Brass:     ['Honey','Label','Hairwire','Ebony','White','Yellow'],
   Aluminium: ['UBC','Tense','TT','Extrusion','Zorba','Wire'],
- Lead: ['Lead Scrap','Re-melted Lead','Dry Battery Scrap']
+  Lead:      ['Lead Scrap','Re-melted Lead','Lead Ingot','Dry Battery (Rains)'],
 };
 const ALL_MATERIALS = Object.values(MATERIALS).flat();
 const STAGES = ['Prospect','Contacted','Interested','Negotiating','Deal Closed','Not Workable','Not Interested'];
@@ -897,7 +993,6 @@ function renderDashboard() {
   if (typeFilter) rfqs = rfqs.filter(function(r){ return r.lead_type===typeFilter; });
   if (cutoff) rfqs = rfqs.filter(function(r){ return r.created_at && new Date(r.created_at) >= cutoff; });
 
-  // KPIs
   const converted = rfqs.filter(function(r){return r.status==='Converted';}).length;
   const convRate = rfqs.length ? Math.round(converted/rfqs.length*100) : 0;
   const activeLeads = leads.filter(function(l){return l.stage!=='Not Workable'&&l.stage!=='Not Interested';}).length;
@@ -912,7 +1007,6 @@ function renderDashboard() {
     return '<div class="kpi-card"><div class="kpi-label">'+k.label+'</div><div class="kpi-value">'+k.value+'</div><div class="kpi-sub">'+k.sub+'</div></div>';
   }).join('');
 
-  // Stage donut
   mkChart('chart-stage','doughnut',
     STAGES,
     [leads.filter(function(l){return l.stage===STAGES[0];}).length,
@@ -926,7 +1020,6 @@ function renderDashboard() {
     {plugins:{legend:{position:'right',labels:{font:{size:11},boxWidth:12}}}}
   );
 
-  // RFQ status donut
   mkChart('chart-rfq-status','doughnut',
     RFQ_STATUSES,
     RFQ_STATUSES.map(function(s){return rfqs.filter(function(r){return r.status===s;}).length;}),
@@ -934,7 +1027,6 @@ function renderDashboard() {
     {plugins:{legend:{position:'right',labels:{font:{size:11},boxWidth:12}}}}
   );
 
-  // Timeline — leads added per month
   const monthBuckets = {};
   const numMonths = months > 0 ? months : 12;
   for (let i=numMonths-1; i>=0; i--) {
@@ -955,7 +1047,6 @@ function renderDashboard() {
     {plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}
   );
 
-  // Top countries
   const cmap={};
   leads.forEach(function(l){ const c=(l.country||'Unknown').trim(); cmap[c]=(cmap[c]||0)+1; });
   const countries=Object.entries(cmap).sort(function(a,b){return b[1]-a[1];}).slice(0,8);
@@ -965,7 +1056,6 @@ function renderDashboard() {
     countries.map(function(e){return '<tr><td>'+esc(e[0])+'</td><td><strong>'+e[1]+'</strong></td><td><div class="progress-bar"><div class="progress-bar-fill" style="width:'+Math.round(e[1]/maxC*100)+'%"></div></div></td></tr>';}).join('') +
     '</tbody></table>' : '<span style="color:#94a3b8;font-size:12px">No data</span>';
 
-  // By team member
   const tmap={};
   TEAM.forEach(function(t){tmap[t]=0;});
   leads.forEach(function(l){if(l.assigned_to&&tmap[l.assigned_to]!==undefined)tmap[l.assigned_to]++;});
@@ -973,7 +1063,6 @@ function renderDashboard() {
     {plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}
   );
 
-  // Top materials
   const mmap={};
   leads.forEach(function(l){
     parseMaterials(l.materials||'').forEach(function(m){
@@ -987,7 +1076,6 @@ function renderDashboard() {
     mats.map(function(e){return '<tr><td><span class="mat-chip">'+esc(e[0])+'</span></td><td><strong>'+e[1]+'</strong></td><td><div class="progress-bar"><div class="progress-bar-fill" style="width:'+Math.round(e[1]/maxM*100)+'%"></div></div></td></tr>';}).join('') +
     '</tbody></table>' : '<span style="color:#94a3b8;font-size:12px">No materials data yet</span>';
 
-  // Funnel chart
   const funnelData = [
     leads.length,
     leads.filter(function(l){return ['Contacted','Interested','Negotiating','Deal Closed'].includes(l.stage);}).length,
@@ -1031,17 +1119,22 @@ function mkChart(id, type, labels, data, colors, extraOpts) {
 function switchTab(tab) {
   currentTab = tab;
   const isDash = tab==='dashboard';
-  const isRFQ = tab==='rfqs';
-  ['buyer','supplier','rfqs','dashboard'].forEach(function(t){
+  const isRFQ  = tab==='rfqs';
+  const isOrd  = tab==='orders';
+  const isLead = !isDash && !isRFQ && !isOrd;
+  ['buyer','supplier','rfqs','dashboard','orders'].forEach(function(t){
     document.getElementById('tab-'+t).classList.toggle('active',t===tab);
   });
-  document.getElementById('filters').style.display = (!isRFQ&&!isDash)?'flex':'none';
-  document.getElementById('leads-table-wrap').style.display = (!isRFQ&&!isDash)?'block':'none';
-  document.getElementById('rfq-filters').style.display = isRFQ?'flex':'none';
-  document.getElementById('rfq-table-wrap').style.display = isRFQ?'block':'none';
-  document.getElementById('dashboard-wrap').style.display = isDash?'block':'none';
+  document.getElementById('filters').style.display           = isLead?'flex':'none';
+  document.getElementById('leads-table-wrap').style.display  = isLead?'block':'none';
+  document.getElementById('rfq-filters').style.display       = isRFQ?'flex':'none';
+  document.getElementById('rfq-table-wrap').style.display    = isRFQ?'block':'none';
+  document.getElementById('dashboard-wrap').style.display    = isDash?'block':'none';
+  document.getElementById('orders-filters').style.display    = isOrd?'flex':'none';
+  document.getElementById('orders-table-wrap').style.display = isOrd?'block':'none';
   if (isDash) loadDashboard();
   else if (isRFQ) loadAllRFQs();
+  else if (isOrd) loadOrders();
   else { clearFilters(); loadLeads(); }
 }
 
@@ -1069,6 +1162,252 @@ function parseMaterials(str) {
 function serializeMaterials(mats) {
   return mats.map(function(m){return m.name+':'+(m.qty||'')+':'+(m.uom||'MT/Month');}).join(',');
 }
-</script>
-</body>
-</html>
+
+// ── Orders ──
+let allOrders = [], buyerLeadsList = [], supplierLeadsList = [];
+let currentOrder = null;
+const ORDER_STATUSES = ['Draft','Confirmed','In Production','Shipped','At Port','Delivered','Completed','Cancelled'];
+const ORDER_STATUS_CLASS = {
+  'Draft':'draft','Confirmed':'confirmed','In Production':'inproduction',
+  'Shipped':'shipped','At Port':'atport','Delivered':'delivered',
+  'Completed':'completed','Cancelled':'cancelled'
+};
+const INCOTERMS = ['FOB','CIF','CFR','EXW','DDP','FCA','CPT','CIP'];
+const PAYMENT_TYPES = ['Advance','Part Payment','Balance','LC','CAD','DA','DP'];
+
+async function loadOrders() {
+  const cached = localStorage.getItem('rclt_orders');
+  if (cached) { try { allOrders = JSON.parse(cached); applyOrderFilters(); } catch(e){} }
+  else { document.getElementById('orders-body').innerHTML = '<tr class="loading-row"><td colspan="13"><span class="spinner"></span> Loading&#8230;</td></tr>'; }
+  try {
+    const [ob, os, ores] = await Promise.all([
+      api('getLeads',{type:'buyer'}),
+      api('getLeads',{type:'supplier'}),
+      api('getOrders',{})
+    ]);
+    buyerLeadsList = ob.leads || [];
+    supplierLeadsList = os.leads || [];
+    allOrders = ores.orders || [];
+    localStorage.setItem('rclt_orders', JSON.stringify(allOrders));
+    applyOrderFilters();
+  } catch(e) {
+    if (!cached) document.getElementById('orders-body').innerHTML = '<tr class="empty-row"><td colspan="13" style="color:#ef4444">Could not load orders. '+e.message+'</td></tr>';
+  }
+}
+
+function applyOrderFilters() {
+  const search   = document.getElementById('of-search').value.toLowerCase();
+  const status   = document.getElementById('of-status').value;
+  const material = document.getElementById('of-material').value.toLowerCase();
+  renderOrdersTable(allOrders.filter(function(o){
+    if (search && !(o.order_ref||'').toLowerCase().includes(search) && !(o.buyer_company||'').toLowerCase().includes(search) && !(o.supplier_company||'').toLowerCase().includes(search)) return false;
+    if (status && o.status !== status) return false;
+    if (material && !(o.material||'').toLowerCase().includes(material)) return false;
+    return true;
+  }));
+}
+
+function clearOrderFilters() {
+  ['of-search','of-material'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('of-status').value='';
+  applyOrderFilters();
+}
+
+function renderOrdersTable(orders) {
+  const tbody = document.getElementById('orders-body');
+  if (!orders.length) { tbody.innerHTML = '<tr class="empty-row"><td colspan="13">No orders found. Click "+ Add Order" to create one.</td></tr>'; return; }
+  tbody.innerHTML = orders.map(function(o) {
+    const margin = (o.buyer_price && o.supplier_price) ? (parseFloat(o.buyer_price) - parseFloat(o.supplier_price)) : null;
+    const marginHtml = margin !== null
+      ? '<span class="'+(margin>=0?'margin-pos':'margin-neg')+'">'+(margin>=0?'+':'')+margin.toFixed(2)+'</span>'
+      : '<span style="color:#94a3b8">&#8212;</span>';
+    return '<tr onclick="openOrder(\''+o.id+'\')">' +
+      '<td><strong>'+esc(o.order_ref||'&#8212;')+'</strong></td>' +
+      '<td>'+esc(o.buyer_company||o.buyer_name||'&#8212;')+'</td>' +
+      '<td>'+esc(o.supplier_company||o.supplier_name||'&#8212;')+'</td>' +
+      '<td><span class="mat-chip">'+esc(o.material||'&#8212;')+'</span></td>' +
+      '<td style="font-size:11px">'+(o.qty?esc(o.qty)+' '+esc(o.unit||'MT'):'<span style="color:#94a3b8">&#8212;</span>')+'</td>' +
+      '<td style="font-size:11px">'+(o.buyer_price?esc(o.currency||'USD')+' '+esc(o.buyer_price):'<span style="color:#94a3b8">&#8212;</span>')+'</td>' +
+      '<td style="font-size:11px">'+(o.supplier_price?esc(o.currency||'USD')+' '+esc(o.supplier_price):'<span style="color:#94a3b8">&#8212;</span>')+'</td>' +
+      '<td>'+marginHtml+'</td>' +
+      '<td><span class="badge badge-'+(ORDER_STATUS_CLASS[o.status]||'draft')+'">'+esc(o.status||'Draft')+'</span></td>' +
+      '<td style="font-size:11px">'+esc(o.container_number||'&#8212;')+'</td>' +
+      '<td style="font-size:11px">'+esc(o.bl_number||'&#8212;')+'</td>' +
+      '<td style="font-size:11px;color:#64748b">'+fmtDate(o.etd)+'</td>' +
+      '<td style="font-size:11px;color:#64748b">'+fmtDate(o.eta)+'</td></tr>';
+  }).join('');
+}
+
+async function openOrder(id) {
+  currentOrder = allOrders.find(function(o){return o.id===id;});
+  if (!currentOrder) return;
+  document.getElementById('panel-title').textContent = currentOrder.order_ref || 'Order';
+  document.getElementById('panel-meta').textContent = (currentOrder.buyer_company||currentOrder.buyer_name||'') + ' → ' + (currentOrder.supplier_company||currentOrder.supplier_name||'') + ' · ' + (currentOrder.material||'');
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('panel').classList.add('open');
+  document.getElementById('panel-body').innerHTML = '<div style="padding:20px;color:#64748b"><span class="spinner"></span> Loading&#8230;</div>';
+  const [pr, rr] = await Promise.all([
+    api('getOrderPayments', {order_id: id}),
+    api('getOrderRemarks',  {order_id: id})
+  ]);
+  renderOrderPanel(currentOrder, pr.payments||[], rr.remarks||[]);
+}
+
+function renderOrderPanel(o, payments, remarks) {
+  const margin = (o.buyer_price && o.supplier_price) ? (parseFloat(o.buyer_price) - parseFloat(o.supplier_price)) : null;
+  const totalPaid = payments.reduce(function(s,p){return s + parseFloat(p.amount||0);}, 0);
+  const totalBuyerValue = (o.qty && o.buyer_price) ? parseFloat(o.qty) * parseFloat(o.buyer_price) : null;
+  const totalMargin = (o.qty && margin !== null) ? parseFloat(o.qty) * margin : null;
+
+  const infoSection = '<div class="panel-section"><h3>Order Info</h3>' +
+    '<div class="info-row">' +
+    '<span><strong>Ref:</strong> '+esc(o.order_ref||'&#8212;')+'</span>' +
+    '<span><strong>Status:</strong> <span class="badge badge-'+(ORDER_STATUS_CLASS[o.status]||'draft')+'" style="margin-left:3px">'+esc(o.status)+'</span></span>' +
+    '<span><strong>Material:</strong> <span class="mat-chip">'+esc(o.material||'&#8212;')+'</span></span>' +
+    '</div>' +
+    '<div class="info-row" style="margin-top:6px">' +
+    '<span><strong>Buyer:</strong> '+esc(o.buyer_company||o.buyer_name||'&#8212;')+'</span>' +
+    '<span><strong>Supplier:</strong> '+esc(o.supplier_company||o.supplier_name||'&#8212;')+'</span>' +
+    '</div>' +
+    '<div class="info-row" style="margin-top:6px">' +
+    '<span><strong>Qty:</strong> '+(o.qty?esc(o.qty)+' '+esc(o.unit||'MT'):'&#8212;')+'</span>' +
+    '<span><strong>Buyer Price:</strong> '+(o.buyer_price?esc(o.currency||'USD')+' '+esc(o.buyer_price)+'/MT':'&#8212;')+'</span>' +
+    '<span><strong>Supplier Price:</strong> '+(o.supplier_price?esc(o.currency||'USD')+' '+esc(o.supplier_price)+'/MT':'&#8212;')+'</span>' +
+    '</div>' +
+    '<div class="info-row" style="margin-top:6px">' +
+    (margin!==null?'<span><strong>Margin/MT:</strong> <span class="'+(margin>=0?'margin-pos':'margin-neg')+'">'+(margin>=0?'+':'')+margin.toFixed(2)+'</span></span>':'') +
+    (totalMargin!==null?'<span><strong>Total Margin:</strong> <span class="'+(totalMargin>=0?'margin-pos':'margin-neg')+'">'+(totalMargin>=0?'+':'')+totalMargin.toFixed(0)+'</span></span>':'') +
+    (totalBuyerValue?'<span><strong>Buyer Value:</strong> '+esc(o.currency||'USD')+' '+totalBuyerValue.toFixed(0)+'</span>':'') +
+    '</div>' +
+    '<div class="info-row" style="margin-top:6px">' +
+    '<span><strong>Incoterms:</strong> '+esc(o.incoterms||'&#8212;')+'</span>' +
+    '<span><strong>Payment Terms:</strong> '+esc(o.payment_terms||'&#8212;')+'</span>' +
+    '</div>' +
+    (o.notes?'<div style="margin-top:8px;font-size:12px;color:#475569;background:#f8fafc;padding:8px;border-radius:5px">'+esc(o.notes)+'</div>':'') +
+    '<button class="btn-sm primary" style="margin-top:10px" onclick="openEditOrder()">Edit Order</button></div>';
+
+  const logisticsSection = '<div class="panel-section"><h3>Logistics</h3>' +
+    '<div class="info-row">' +
+    '<span><strong>Container #:</strong> '+esc(o.container_number||'&#8212;')+'</span>' +
+    '<span><strong>BL #:</strong> '+esc(o.bl_number||'&#8212;')+'</span>' +
+    '<span><strong>Vessel:</strong> '+esc(o.vessel_name||'&#8212;')+'</span>' +
+    '</div>' +
+    '<div class="info-row" style="margin-top:6px">' +
+    '<span><strong>Loading Port:</strong> '+esc(o.loading_port||'&#8212;')+'</span>' +
+    '<span><strong>Discharge Port:</strong> '+esc(o.discharge_port||'&#8212;')+'</span>' +
+    '</div>' +
+    '<div class="info-row" style="margin-top:6px">' +
+    '<span><strong>ETD:</strong> '+fmtDate(o.etd)+'</span>' +
+    '<span><strong>ETA:</strong> '+fmtDate(o.eta)+'</span>' +
+    '</div></div>';
+
+  const paidListHtml = payments.length
+    ? payments.map(function(p){
+        return '<div class="payment-item">' +
+          '<div><div class="pay-amount">'+esc(p.currency||o.currency||'USD')+' '+parseFloat(p.amount||0).toLocaleString()+'</div>' +
+          '<div class="pay-meta"><strong>'+esc(p.type||'Payment')+'</strong> · '+fmtDate(p.payment_date)+(p.reference?' · Ref: '+esc(p.reference):'')+(p.notes?' · '+esc(p.notes):'')+'</div></div>' +
+          '</div>';
+      }).join('') +
+      '<div class="pay-total-row"><span>Total Paid</span><strong>'+esc(payments[0]&&payments[0].currency?payments[0].currency:o.currency||'USD')+' '+totalPaid.toLocaleString()+'</strong></div>'
+    : '<div style="color:#94a3b8;font-size:12px;margin-bottom:8px">No payments recorded yet.</div>';
+
+  const paySection = '<div class="panel-section"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
+    '<h3 style="margin:0">Payments ('+payments.length+')</h3>' +
+    '<button class="btn-sm primary" onclick="toggleAddPayment()">+ Add Payment</button></div>' +
+    '<div id="payment-list">'+paidListHtml+'</div>' +
+    '<div id="add-payment-form" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px;margin-top:8px">' +
+    '<div class="form-grid three">' +
+    '<div class="form-group"><label>Type</label><select id="pay-type">'+PAYMENT_TYPES.map(function(t){return '<option>'+t+'</option>';}).join('')+'</select></div>' +
+    '<div class="form-group"><label>Amount</label><input id="pay-amount" type="number" placeholder="0.00" /></div>' +
+    '<div class="form-group"><label>Currency</label><select id="pay-currency">'+CURRENCIES.map(function(c){return '<option'+(c===(o.currency||'USD')?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>' +
+    '<div class="form-group"><label>Date</label><input id="pay-date" type="date" /></div>' +
+    '<div class="form-group"><label>Reference</label><input id="pay-ref" type="text" placeholder="e.g. TT/LC ref" /></div>' +
+    '<div class="form-group full"><label>Notes</label><input id="pay-notes" type="text" /></div>' +
+    '</div><div class="form-actions">' +
+    '<button class="btn-cancel" onclick="toggleAddPayment()">Cancel</button>' +
+    '<button class="btn-save" onclick="addOrderPayment(\''+o.id+'\')">Save Payment</button></div></div></div>';
+
+  const remarksSection = '<div class="panel-section"><h3>Remarks ('+remarks.length+')</h3>' +
+    '<div class="remarks-list">'+(remarks.length?remarks.map(remarkHtml).join(''):'<span style="color:#94a3b8;font-size:12px">No remarks yet.</span>')+'</div>' +
+    '<div class="remark-add"><input type="text" id="order-remark-input" placeholder="Add a remark&#8230;" onkeydown="if(event.key===\'Enter\')addOrderRemark(\''+o.id+'\')" />' +
+    '<button onclick="addOrderRemark(\''+o.id+'\')">Add</button></div></div>';
+
+  document.getElementById('panel-body').innerHTML = infoSection + logisticsSection + paySection + remarksSection;
+}
+
+function toggleAddPayment() {
+  const f = document.getElementById('add-payment-form');
+  f.style.display = f.style.display==='none' ? 'block' : 'none';
+}
+
+async function addOrderPayment(orderId) {
+  const amount = document.getElementById('pay-amount').value;
+  if (!amount) { alert('Amount is required.'); return; }
+  const payload = {
+    order_id: orderId,
+    type: document.getElementById('pay-type').value,
+    amount: amount,
+    currency: document.getElementById('pay-currency').value,
+    payment_date: document.getElementById('pay-date').value,
+    reference: document.getElementById('pay-ref').value.trim(),
+    notes: document.getElementById('pay-notes').value.trim(),
+    by: currentUser
+  };
+  try {
+    const res = await api('addOrderPayment', payload);
+    if (res.success) {
+      payload.id = res.id; payload.created_at = res.created_at;
+      const newItem = '<div class="payment-item">' +
+        '<div><div class="pay-amount">'+esc(payload.currency)+' '+parseFloat(payload.amount).toLocaleString()+'</div>' +
+        '<div class="pay-meta"><strong>'+esc(payload.type)+'</strong> · '+fmtDate(payload.payment_date)+(payload.reference?' · Ref: '+esc(payload.reference):'')+'</div></div></div>';
+      document.getElementById('payment-list').insertAdjacentHTML('afterbegin', newItem);
+      document.getElementById('add-payment-form').style.display = 'none';
+    } else { alert('Error: ' + (res.error||'Unknown')); }
+  } catch(e) { alert('Network error: '+e.message); }
+}
+
+async function addOrderRemark(orderId) {
+  const input = document.getElementById('order-remark-input');
+  const text = (input.value||'').trim();
+  if (!text) return;
+  input.value = '';
+  try {
+    const res = await api('addOrderRemark', {order_id: orderId, remark: text, by: currentUser});
+    if (res.success) {
+      const newRem = {id:res.id, remark:text, added_by:currentUser, created_at:res.created_at};
+      const list = document.querySelector('#panel-body .remarks-list');
+      if (list) list.insertAdjacentHTML('afterbegin', remarkHtml(newRem));
+    } else { alert('Error: '+(res.error||'Unknown')); input.value = text; }
+  } catch(e) { alert('Network error: '+e.message); input.value = text; }
+}
+
+function openEditOrder() {
+  const o = currentOrder;
+  const matOptions = ALL_MATERIALS.map(function(m){return '<option'+(m===o.material?' selected':'')+'>'+m+'</option>';}).join('');
+  const buyerOptions = '<option value="">&#8212;</option>' + buyerLeadsList.map(function(l){return '<option value="'+esc(l.id)+'"'+(l.id===o.buyer_lead_id?' selected':'')+'>'+esc(l.company_name)+' ('+esc(l.country)+')</option>';}).join('');
+  const supplierOptions = '<option value="">&#8212;</option>' + supplierLeadsList.map(function(l){return '<option value="'+esc(l.id)+'"'+(l.id===o.supplier_lead_id?' selected':'')+'>'+esc(l.company_name)+' ('+esc(l.country)+')</option>';}).join('');
+  document.getElementById('panel-body').innerHTML =
+    '<div style="padding:16px 20px"><h3 style="font-size:13px;font-weight:700;color:#0f3d2e;margin-bottom:12px">Edit Order</h3>' +
+    '<div class="form-grid">' +
+    '<div class="form-group"><label>Order Ref</label><input id="eo-ref" value="'+esc(o.order_ref||'')+'" /></div>' +
+    '<div class="form-group"><label>Status</label><select id="eo-status">'+ORDER_STATUSES.map(function(s){return '<option'+(s===o.status?' selected':'')+'>'+s+'</option>';}).join('')+'</select></div>' +
+    '<div class="form-group"><label>Buyer</label><select id="eo-buyer">'+buyerOptions+'</select></div>' +
+    '<div class="form-group"><label>Supplier</label><select id="eo-supplier">'+supplierOptions+'</select></div>' +
+    '<div class="form-group"><label>Material</label><select id="eo-material"><option value="">&#8212;</option>'+matOptions+'</select></div>' +
+    '<div class="form-group"><label>Qty</label><input id="eo-qty" type="number" value="'+esc(o.qty||'')+'" /></div>' +
+    '<div class="form-group"><label>Unit</label><select id="eo-unit">'+UNITS.map(function(u){return '<option'+(u===(o.unit||'MT')?' selected':'')+'>'+u+'</option>';}).join('')+'</select></div>' +
+    '<div class="form-group"><label>Currency</label><select id="eo-currency">'+CURRENCIES.map(function(c){return '<option'+(c===(o.currency||'USD')?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>' +
+    '<div class="form-group"><label>Buyer Price/MT</label><input id="eo-buyer-price" type="number" value="'+esc(o.buyer_price||'')+'" /></div>' +
+    '<div class="form-group"><label>Supplier Price/MT</label><input id="eo-supplier-price" type="number" value="'+esc(o.supplier_price||'')+'" /></div>' +
+    '<div class="form-group"><label>Incoterms</label><select id="eo-incoterms"><option value="">&#8212;</option>'+INCOTERMS.map(function(t){return '<option'+(t===o.incoterms?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div>' +
+    '<div class="form-group"><label>Payment Terms</label><input id="eo-payment-terms" value="'+esc(o.payment_terms||'')+'" /></div>' +
+    '<div class="form-group"><label>Container #</label><input id="eo-container" value="'+esc(o.container_number||'')+'" /></div>' +
+    '<div class="form-group"><label>BL #</label><input id="eo-bl" value="'+esc(o.bl_number||'')+'" /></div>' +
+    '<div class="form-group"><label>Vessel</label><input id="eo-vessel" value="'+esc(o.vessel_name||'')+'" /></div>' +
+    '<div class="form-group"><label>Loading Port</label><input id="eo-loading-port" value="'+esc(o.loading_port||'')+'" /></div>' +
+    '<div class="form-group"><label>Discharge Port</label><input id="eo-discharge-port" value="'+esc(o.discharge_port||'')+'" /></div>' +
+    '<div class="form-group"><label>ETD</label><input id="eo-etd" type="date" value="'+esc(o.etd?o.etd.slice(0,10):'')+'" /></div>' +
+    '<div class="form-group"><label>ETA</label><input id="eo-eta" type="date" value="'+esc(o.eta?o.eta.slice(0,10):'')+'" /></div>' +
+    '<div class="form-group full"><label>Notes</label><textarea id="eo-notes">'+esc(o.notes||'')+'</textarea></div>' +
+    '</div><div class="form-actions">' +
+    '<button class="btn-cancel" onclick="openOrder
