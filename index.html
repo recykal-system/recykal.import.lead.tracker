@@ -885,43 +885,73 @@ function toggleEditRFQ(rfqId) {
 
 async function saveEditRFQ(rfqId) {
   const oldRfq = (rfqCache[currentLead&&currentLead.id]||[]).find(function(r){return r.id===rfqId;}) || {};
-  const payload = {id:rfqId,material:document.getElementById('re-mat-'+rfqId).value,qty:document.getElementById('re-qty-'+rfqId).value||null,unit:document.getElementById('re-unit-'+rfqId).value,currency:document.getElementById('re-cur-'+rfqId).value,expected_price:document.getElementById('re-exp-'+rfqId).value||null,deal_closure_price:document.getElementById('re-close-'+rfqId).value||null,attachment_pct:document.getElementById('re-att-'+rfqId).value||null,status:document.getElementById('re-status-'+rfqId).value,assigned_to:document.getElementById('re-assigned-'+rfqId).value,not_converted_reason:document.getElementById('re-ncr-'+rfqId).value.trim(),notes:document.getElementById('re-notes-'+rfqId).value.trim()};
-  const res = await api('updateRFQ',payload);
+
+  // Capture all values from DOM before any card replacement
+  const buyerEl = document.getElementById('re-buyer-'+rfqId);
+  const supplierEl = document.getElementById('re-supplier-'+rfqId);
+  const buyerId = buyerEl ? buyerEl.value : (oldRfq.buyer_lead_id||'');
+  const supplierId = supplierEl ? supplierEl.value : (oldRfq.supplier_lead_id||'');
+  const buyerLead = buyerLeadsList.find(function(l){return l.id===buyerId;});
+  const supplierLead = supplierLeadsList.find(function(l){return l.id===supplierId;});
+  const bpEl = document.getElementById('re-buyer-price-'+rfqId);
+  const spEl = document.getElementById('re-supplier-price-'+rfqId);
+  const itEl = document.getElementById('re-incoterms-'+rfqId);
+  const ptEl = document.getElementById('re-payment-terms-'+rfqId);
+  const buyerPrice = bpEl ? bpEl.value||null : null;
+  const supplierPrice = spEl ? spEl.value||null : null;
+  const incoterms = itEl ? itEl.value : (oldRfq.incoterms||'');
+  const paymentTerms = ptEl ? ptEl.value.trim() : (oldRfq.payment_terms||'');
+
+  const payload = {
+    id: rfqId,
+    material: document.getElementById('re-mat-'+rfqId).value,
+    qty: document.getElementById('re-qty-'+rfqId).value||null,
+    unit: document.getElementById('re-unit-'+rfqId).value,
+    currency: document.getElementById('re-cur-'+rfqId).value,
+    expected_price: document.getElementById('re-exp-'+rfqId).value||null,
+    deal_closure_price: document.getElementById('re-close-'+rfqId).value||null,
+    attachment_pct: document.getElementById('re-att-'+rfqId).value||null,
+    status: document.getElementById('re-status-'+rfqId).value,
+    assigned_to: document.getElementById('re-assigned-'+rfqId).value,
+    not_converted_reason: document.getElementById('re-ncr-'+rfqId).value.trim(),
+    notes: document.getElementById('re-notes-'+rfqId).value.trim(),
+    buyer_lead_id: buyerId,
+    buyer_name: buyerLead ? buyerLead.company_name : (oldRfq.buyer_name||''),
+    supplier_lead_id: supplierId,
+    supplier_name: supplierLead ? supplierLead.company_name : (oldRfq.supplier_name||''),
+    incoterms: incoterms,
+    payment_terms: paymentTerms
+  };
+
+  const res = await api('updateRFQ', payload);
   if (res.success) {
-    const cache=rfqCache[currentLead.id]; const idx=cache.findIndex(function(r){return r.id===rfqId;});
-    if(idx>=0) Object.assign(cache[idx],payload);
-    const card=document.getElementById('rfq-'+rfqId); if(card) card.outerHTML=rfqCard(cache[idx]);
-    // If newly converted, create an order
-    if (payload.status === 'Converted' && oldRfq.status !== 'Converted') {
-      const buyerEl = document.getElementById('re-buyer-'+rfqId);
-      const supplierEl = document.getElementById('re-supplier-'+rfqId);
-      if (buyerEl && supplierEl && buyerEl.value && supplierEl.value) {
-        const buyerLead = buyerLeadsList.find(function(l){return l.id===buyerEl.value;});
-        const supplierLead = supplierLeadsList.find(function(l){return l.id===supplierEl.value;});
-        const bpEl = document.getElementById('re-buyer-price-'+rfqId);
-        const spEl = document.getElementById('re-supplier-price-'+rfqId);
-        const itEl = document.getElementById('re-incoterms-'+rfqId);
-        const ptEl = document.getElementById('re-payment-terms-'+rfqId);
-        const oRes = await api('addOrder',{
-          buyer_lead_id: buyerEl.value,
-          buyer_name: buyerLead ? buyerLead.company_name : '',
-          supplier_lead_id: supplierEl.value,
-          supplier_name: supplierLead ? supplierLead.company_name : '',
-          material: payload.material,
-          qty: payload.qty,
-          unit: payload.unit,
-          currency: payload.currency,
-          buyer_price: bpEl ? bpEl.value || null : null,
-          supplier_price: spEl ? spEl.value || null : null,
-          incoterms: itEl ? itEl.value : '',
-          payment_terms: ptEl ? ptEl.value.trim() : '',
-          status: 'Confirmed',
-          by: currentUser
-        });
-        if (oRes && oRes.success) {
-          localStorage.removeItem('rclt_orders');
-          showToast('Order created from RFQ');
-        }
+    const cache = rfqCache[currentLead.id];
+    const idx = cache.findIndex(function(r){return r.id===rfqId;});
+    if (idx>=0) Object.assign(cache[idx], payload);
+    const card = document.getElementById('rfq-'+rfqId);
+    if (card) card.outerHTML = rfqCard(cache[idx]);
+
+    // If newly converted and buyer+supplier both set, create an order
+    if (payload.status === 'Converted' && oldRfq.status !== 'Converted' && buyerId && supplierId) {
+      const oRes = await api('addOrder', {
+        buyer_lead_id: buyerId,
+        buyer_name: payload.buyer_name,
+        supplier_lead_id: supplierId,
+        supplier_name: payload.supplier_name,
+        material: payload.material,
+        qty: payload.qty,
+        unit: payload.unit,
+        currency: payload.currency,
+        buyer_price: buyerPrice,
+        supplier_price: supplierPrice,
+        incoterms: incoterms,
+        payment_terms: paymentTerms,
+        status: 'Confirmed',
+        by: currentUser
+      });
+      if (oRes && oRes.success) {
+        localStorage.removeItem('rclt_orders');
+        showToast('Order created from RFQ');
       }
     }
   } else alert('Error: '+res.error);
