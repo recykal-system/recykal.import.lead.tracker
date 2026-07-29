@@ -1617,10 +1617,18 @@ function openEditOrder() {
     '<div class="form-group"><label>Qty</label><input id="eo-qty" type="number" value="'+esc(o.qty||'')+'" /></div>' +
     '<div class="form-group"><label>Unit</label><select id="eo-unit">'+UNITS.map(function(u){return '<option'+(u===(o.unit||'MT')?' selected':'')+'>'+u+'</option>';}).join('')+'</select></div>' +
     '<div class="form-group"><label>Currency</label><select id="eo-currency">'+CURRENCIES.map(function(c){return '<option'+(c===(o.currency||'USD')?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>' +
-    '<div class="form-group"><label>Buyer Price/MT</label><input id="eo-buyer-price" type="number" value="'+esc(o.buyer_price||'')+'" /></div>' +
-    '<div class="form-group"><label>Supplier Price/MT</label><input id="eo-supplier-price" type="number" value="'+esc(o.supplier_price||'')+'" /></div>' +
+    '<div class="form-group"><label>Buyer Price/MT</label><input id="eo-buyer-price" type="number" value="'+esc(o.buyer_price||'')+'" oninput="recalcOrderMargin()" /></div>' +
+    '<div class="form-group"><label>Supplier Price/MT</label><input id="eo-supplier-price" type="number" value="'+esc(o.supplier_price||'')+'" oninput="recalcOrderMargin()" /></div>' +
     '<div class="form-group"><label>Incoterms</label><select id="eo-incoterms"><option value="">&#8212;</option>'+INCOTERMS.map(function(t){return '<option'+(t===o.incoterms?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div>' +
     '<div class="form-group"><label>Payment Terms</label><input id="eo-payment-terms" value="'+esc(o.payment_terms||'')+'" /></div>' +
+    '<div class="form-group full" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+    '<span style="font-size:11px;font-weight:700;color:#0f3d2e;text-transform:uppercase;letter-spacing:.4px">Cost Breakdown</span>' +
+    '<button type="button" style="font-size:11px;padding:3px 10px;background:#0f3d2e;color:#fff;border:none;border-radius:4px;cursor:pointer" onclick="addOrderCostRow()">+ Add Cost</button>' +
+    '</div>' +
+    '<div id="eo-costs"></div>' +
+    '<div id="eo-margin" style="margin-top:10px;padding:10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:12px"></div>' +
+    '</div>' +
     '<div class="form-group"><label>Container #</label><input id="eo-container" value="'+esc(o.container_number||'')+'" /></div>' +
     '<div class="form-group"><label>BL #</label><input id="eo-bl" value="'+esc(o.bl_number||'')+'" /></div>' +
     '<div class="form-group"><label>Vessel</label><input id="eo-vessel" value="'+esc(o.vessel_name||'')+'" /></div>' +
@@ -1632,6 +1640,54 @@ function openEditOrder() {
     '</div><div class="form-actions">' +
     '<button class="btn-cancel" onclick="openOrder(\''+o.id+'\')">Cancel</button>' +
     '<button class="btn-save" onclick="saveEditOrder(\''+o.id+'\')">Save Changes</button></div></div>';
+  // Pre-populate existing costs
+  const existingCosts = o.costs ? (typeof o.costs === 'string' ? JSON.parse(o.costs) : o.costs) : [];
+  existingCosts.forEach(function(c){ addOrderCostRow(c.label, c.amount); });
+  recalcOrderMargin();
+}
+
+function addOrderCostRow(label, amount) {
+  const wrap = document.getElementById('eo-costs');
+  if (!wrap) return;
+  const opts = COST_TYPES.map(function(t){return '<option'+(t===(label||'')?' selected':'')+'>'+t+'</option>';}).join('');
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:4px';
+  row.innerHTML =
+    '<select style="flex:1.5;border:1px solid #e2e8f0;border-radius:4px;padding:4px 6px;font-size:12px;background:#fff"><option value="">Select cost type&#8230;</option>'+opts+'</select>' +
+    '<input type="number" placeholder="Amount" value="'+(amount||'')+'" style="flex:1;border:1px solid #e2e8f0;border-radius:4px;padding:4px 6px;font-size:12px" oninput="recalcOrderMargin()" />' +
+    '<button type="button" style="background:#fee2e2;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;color:#991b1b;font-size:12px" onclick="this.parentNode.remove();recalcOrderMargin()">&#10005;</button>';
+  wrap.appendChild(row);
+  recalcOrderMargin();
+}
+
+function getOrderCostRows() {
+  const wrap = document.getElementById('eo-costs');
+  if (!wrap) return [];
+  return Array.from(wrap.children).map(function(row){
+    const sel = row.querySelector('select');
+    const inp = row.querySelector('input');
+    return {label: sel ? sel.value : '', amount: inp ? parseFloat(inp.value)||0 : 0};
+  }).filter(function(c){return c.label && c.amount;});
+}
+
+function recalcOrderMargin() {
+  const bp = parseFloat((document.getElementById('eo-buyer-price')||{}).value)||0;
+  const sp = parseFloat((document.getElementById('eo-supplier-price')||{}).value)||0;
+  const costs = getOrderCostRows();
+  const totalCosts = costs.reduce(function(s,c){return s+c.amount;},0);
+  const gross = bp - sp;
+  const net = gross - totalCosts;
+  const el = document.getElementById('eo-margin');
+  if (!el) return;
+  const rows = costs.map(function(c){
+    return '<tr><td style="color:#64748b;padding:2px 0">&#8722; '+esc(c.label)+'</td><td style="text-align:right;padding:2px 0;color:#ef4444">'+c.amount.toFixed(2)+'</td></tr>';
+  }).join('');
+  el.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+    '<tr><td style="padding:2px 0">Buyer Price / MT</td><td style="text-align:right;padding:2px 0"><strong>'+bp.toFixed(2)+'</strong></td></tr>' +
+    '<tr><td style="color:#64748b;padding:2px 0">&#8722; Supplier Price / MT</td><td style="text-align:right;padding:2px 0;color:#ef4444">'+sp.toFixed(2)+'</td></tr>' +
+    (rows ? '<tr><td colspan="2" style="border-top:1px dashed #e2e8f0;padding:4px 0 2px;font-size:10px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Costs</td></tr>'+rows : '') +
+    '<tr style="border-top:1px solid #0f3d2e"><td style="padding:4px 0 0;font-weight:700">Net Margin / MT</td><td style="text-align:right;padding:4px 0 0;font-weight:800;font-size:15px;color:'+(net>=0?'#166534':'#991b1b')+'">'+net.toFixed(2)+'</td></tr>' +
+    '</table>';
 }
 
 async function saveEditOrder(id) {
@@ -1655,6 +1711,7 @@ async function saveEditOrder(id) {
     supplier_price: document.getElementById('eo-supplier-price').value || null,
     incoterms: document.getElementById('eo-incoterms').value,
     payment_terms: document.getElementById('eo-payment-terms').value.trim(),
+    costs: (function(){ const c=getOrderCostRows(); return c.length?JSON.stringify(c):''; })(),
     container_number: document.getElementById('eo-container').value.trim(),
     bl_number: document.getElementById('eo-bl').value.trim(),
     vessel_name: document.getElementById('eo-vessel').value.trim(),
