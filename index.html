@@ -138,6 +138,8 @@
   .kpi-card .kpi-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #64748b; margin-bottom: 6px; }
   .kpi-card .kpi-value { font-size: 28px; font-weight: 800; color: #0f3d2e; line-height: 1; }
   .kpi-card .kpi-sub { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+  .kpi-highlight { border: 2px solid #22c55e; background: #f0fdf4; }
+  .kpi-highlight .kpi-value { color: #166534; }
   .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
   .chart-card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
   .chart-card h4 { font-size: 12px; font-weight: 700; color: #0f3d2e; margin-bottom: 14px; }
@@ -354,6 +356,10 @@
       <h4>RFQ Conversion Funnel</h4>
       <canvas id="chart-funnel"></canvas>
     </div>
+    <div class="chart-card chart-card-wide">
+      <h4>Recent Conversions &#8594; Orders</h4>
+      <div id="dash-conversions"></div>
+    </div>
   </div>
 </div>
 
@@ -535,7 +541,6 @@ window.onload = function() {
     document.querySelector('.g_id_signin'),
     { type: 'standard', size: 'large', theme: 'outline', text: 'sign_in_with', shape: 'rectangular', logo_alignment: 'left' }
   );
-  google.accounts.id.prompt();
 };
 
 // ── API ──
@@ -544,6 +549,14 @@ async function api(action, data) {
   const url = API_URL + '?action=' + action + '&token=' + encodeURIComponent(currentToken) + '&data=' + encodeURIComponent(JSON.stringify(data));
   const res = await fetch(url, { redirect: 'follow' });
   return res.json();
+}
+
+function showToast(msg) {
+  let t = document.getElementById('toast');
+  if (!t) { t = document.createElement('div'); t.id='toast'; t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0f3d2e;color:#fff;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.2);opacity:0;transition:opacity .2s'; document.body.appendChild(t); }
+  t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(function(){ t.style.opacity='0'; }, 2800);
 }
 
 // ── Leads ──
@@ -813,12 +826,35 @@ async function saveAddRFQ() {
   else alert('Error: '+res.error);
 }
 
+function toggleRFQConvertFields(rfqId, status) {
+  const el = document.getElementById('rfq-convert-'+rfqId);
+  if (el) el.style.display = status === 'Converted' ? 'block' : 'none';
+}
+
 function toggleEditRFQ(rfqId) {
   const el = document.getElementById('rfq-edit-'+rfqId);
   if (el.style.display!=='none') { el.style.display='none'; return; }
   const rfq = (rfqCache[currentLead&&currentLead.id]||[]).find(function(r){return r.id===rfqId;});
   if (!rfq) return;
+
+  const buyerCached = localStorage.getItem('rclt_leads_buyer');
+  const supplierCached = localStorage.getItem('rclt_leads_supplier');
+  if (!buyerLeadsList.length && buyerCached) buyerLeadsList = JSON.parse(buyerCached);
+  if (!supplierLeadsList.length && supplierCached) supplierLeadsList = JSON.parse(supplierCached);
+
+  const isBuyerLead = currentLead && currentLead.type === 'buyer';
+  const buyerOptions = '<option value="">&#8212;</option>' + buyerLeadsList.map(function(l){
+    const sel = (isBuyerLead && l.id === (currentLead&&currentLead.id)) || l.id === rfq.buyer_lead_id ? ' selected' : '';
+    return '<option value="'+esc(l.id)+'"'+sel+'>'+esc(l.company_name)+' ('+esc(l.country)+')</option>';
+  }).join('');
+  const supplierOptions = '<option value="">&#8212;</option>' + supplierLeadsList.map(function(l){
+    const sel = (!isBuyerLead && l.id === (currentLead&&currentLead.id)) || l.id === rfq.supplier_lead_id ? ' selected' : '';
+    return '<option value="'+esc(l.id)+'"'+sel+'>'+esc(l.company_name)+' ('+esc(l.country)+')</option>';
+  }).join('');
+
   const matOptions = ALL_MATERIALS.map(function(m){return '<option'+(m===rfq.material?' selected':'')+'>'+m+'</option>';}).join('');
+  const isConverted = rfq.status === 'Converted';
+
   el.innerHTML='<div style="border-top:1px solid #e2e8f0;margin-top:8px;padding-top:8px"><div class="form-grid three">' +
     '<div class="form-group"><label>Material</label><select id="re-mat-'+rfqId+'"><option value="">&#8212;</option>'+matOptions+'</select></div>' +
     '<div class="form-group"><label>Qty</label><input type="number" id="re-qty-'+rfqId+'" value="'+esc(rfq.qty||'')+'" /></div>' +
@@ -827,20 +863,68 @@ function toggleEditRFQ(rfqId) {
     '<div class="form-group"><label>Exp. Price</label><input type="number" id="re-exp-'+rfqId+'" value="'+esc(rfq.expected_price||'')+'" /></div>' +
     '<div class="form-group"><label>Closure Price</label><input type="number" id="re-close-'+rfqId+'" value="'+esc(rfq.deal_closure_price||'')+'" /></div>' +
     '<div class="form-group"><label>Att %</label><input type="number" id="re-att-'+rfqId+'" value="'+esc(rfq.attachment_pct||'')+'" /></div>' +
-    '<div class="form-group"><label>Status</label><select id="re-status-'+rfqId+'">'+RFQ_STATUSES.map(function(s){return '<option'+(s===rfq.status?' selected':'')+'>'+s+'</option>';}).join('')+'</select></div>' +
+    '<div class="form-group"><label>Status</label><select id="re-status-'+rfqId+'" onchange="toggleRFQConvertFields(\''+rfqId+'\',this.value)">'+RFQ_STATUSES.map(function(s){return '<option'+(s===rfq.status?' selected':'')+'>'+s+'</option>';}).join('')+'</select></div>' +
     '<div class="form-group"><label>Assigned To</label><select id="re-assigned-'+rfqId+'"><option value="">&#8212;</option>'+TEAM.map(function(t){return '<option'+(t===rfq.assigned_to?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div>' +
     '<div class="form-group full"><label>Not Converted Reason</label><input id="re-ncr-'+rfqId+'" value="'+esc(rfq.not_converted_reason||'')+'" /></div>' +
-    '<div class="form-group full"><label>Notes</label><textarea id="re-notes-'+rfqId+'">'+esc(rfq.notes||'')+'</textarea></div></div>' +
+    '<div class="form-group full"><label>Notes</label><textarea id="re-notes-'+rfqId+'">'+esc(rfq.notes||'')+'</textarea></div>' +
+    '</div>' +
+    '<div id="rfq-convert-'+rfqId+'" style="display:'+(isConverted?'block':'none')+';background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px;margin-top:10px">' +
+    '<div style="font-size:11px;font-weight:700;color:#166534;margin-bottom:10px;text-transform:uppercase;letter-spacing:.4px">&#9989; Order Details</div>' +
+    '<div class="form-grid">' +
+    '<div class="form-group"><label>Buyer *</label><select id="re-buyer-'+rfqId+'">'+buyerOptions+'</select></div>' +
+    '<div class="form-group"><label>Supplier *</label><select id="re-supplier-'+rfqId+'">'+supplierOptions+'</select></div>' +
+    '<div class="form-group"><label>Buyer Price / MT</label><input type="number" id="re-buyer-price-'+rfqId+'" value="'+esc(rfq.deal_closure_price||'')+'" /></div>' +
+    '<div class="form-group"><label>Supplier Price / MT</label><input type="number" id="re-supplier-price-'+rfqId+'" value="" /></div>' +
+    '<div class="form-group"><label>Incoterms</label><select id="re-incoterms-'+rfqId+'"><option value="">&#8212;</option>'+INCOTERMS.map(function(t){return '<option>'+t+'</option>';}).join('')+'</select></div>' +
+    '<div class="form-group"><label>Payment Terms</label><input type="text" id="re-payment-terms-'+rfqId+'" placeholder="e.g. 30% advance, 70% BL" /></div>' +
+    '</div></div>' +
     '<div class="form-actions"><button class="btn-cancel" onclick="toggleEditRFQ(\''+rfqId+'\')">Cancel</button>' +
     '<button class="btn-save" onclick="saveEditRFQ(\''+rfqId+'\')">Save</button></div></div>';
   el.style.display='block';
 }
 
 async function saveEditRFQ(rfqId) {
+  const oldRfq = (rfqCache[currentLead&&currentLead.id]||[]).find(function(r){return r.id===rfqId;}) || {};
   const payload = {id:rfqId,material:document.getElementById('re-mat-'+rfqId).value,qty:document.getElementById('re-qty-'+rfqId).value||null,unit:document.getElementById('re-unit-'+rfqId).value,currency:document.getElementById('re-cur-'+rfqId).value,expected_price:document.getElementById('re-exp-'+rfqId).value||null,deal_closure_price:document.getElementById('re-close-'+rfqId).value||null,attachment_pct:document.getElementById('re-att-'+rfqId).value||null,status:document.getElementById('re-status-'+rfqId).value,assigned_to:document.getElementById('re-assigned-'+rfqId).value,not_converted_reason:document.getElementById('re-ncr-'+rfqId).value.trim(),notes:document.getElementById('re-notes-'+rfqId).value.trim()};
   const res = await api('updateRFQ',payload);
-  if (res.success) { const cache=rfqCache[currentLead.id]; const idx=cache.findIndex(function(r){return r.id===rfqId;}); if(idx>=0)Object.assign(cache[idx],payload); const card=document.getElementById('rfq-'+rfqId); if(card)card.outerHTML=rfqCard(cache[idx]); }
-  else alert('Error: '+res.error);
+  if (res.success) {
+    const cache=rfqCache[currentLead.id]; const idx=cache.findIndex(function(r){return r.id===rfqId;});
+    if(idx>=0) Object.assign(cache[idx],payload);
+    const card=document.getElementById('rfq-'+rfqId); if(card) card.outerHTML=rfqCard(cache[idx]);
+    // If newly converted, create an order
+    if (payload.status === 'Converted' && oldRfq.status !== 'Converted') {
+      const buyerEl = document.getElementById('re-buyer-'+rfqId);
+      const supplierEl = document.getElementById('re-supplier-'+rfqId);
+      if (buyerEl && supplierEl && buyerEl.value && supplierEl.value) {
+        const buyerLead = buyerLeadsList.find(function(l){return l.id===buyerEl.value;});
+        const supplierLead = supplierLeadsList.find(function(l){return l.id===supplierEl.value;});
+        const bpEl = document.getElementById('re-buyer-price-'+rfqId);
+        const spEl = document.getElementById('re-supplier-price-'+rfqId);
+        const itEl = document.getElementById('re-incoterms-'+rfqId);
+        const ptEl = document.getElementById('re-payment-terms-'+rfqId);
+        const oRes = await api('addOrder',{
+          buyer_lead_id: buyerEl.value,
+          buyer_name: buyerLead ? buyerLead.company_name : '',
+          supplier_lead_id: supplierEl.value,
+          supplier_name: supplierLead ? supplierLead.company_name : '',
+          material: payload.material,
+          qty: payload.qty,
+          unit: payload.unit,
+          currency: payload.currency,
+          buyer_price: bpEl ? bpEl.value || null : null,
+          supplier_price: spEl ? spEl.value || null : null,
+          incoterms: itEl ? itEl.value : '',
+          payment_terms: ptEl ? ptEl.value.trim() : '',
+          status: 'Confirmed',
+          by: currentUser
+        });
+        if (oRes && oRes.success) {
+          localStorage.removeItem('rclt_orders');
+          showToast('Order created from RFQ');
+        }
+      }
+    }
+  } else alert('Error: '+res.error);
 }
 
 // ── Add Lead Modal ──
@@ -962,23 +1046,28 @@ async function loadDashboard() {
   const cacheB = localStorage.getItem('rclt_leads_buyer');
   const cacheS = localStorage.getItem('rclt_leads_supplier');
   const cacheR = localStorage.getItem('rclt_rfqs_all');
+  const cacheO = localStorage.getItem('rclt_orders');
   let buyers = cacheB ? JSON.parse(cacheB) : [];
   let suppliers = cacheS ? JSON.parse(cacheS) : [];
   let rfqs = cacheR ? JSON.parse(cacheR) : [];
+  allOrders = cacheO ? JSON.parse(cacheO) : allOrders;
   dashAllLeads = buyers.concat(suppliers);
   allRFQs = rfqs;
   if (dashAllLeads.length || rfqs.length) renderDashboard();
 
   try {
-    const [rb, rs, rr] = await Promise.all([
+    const [rb, rs, rr, ro] = await Promise.all([
       api('getLeads',{type:'buyer'}),
       api('getLeads',{type:'supplier'}),
-      api('getAllRFQs',{})
+      api('getAllRFQs',{}),
+      api('getOrders',{})
     ]);
     buyers = rb.leads||[]; suppliers = rs.leads||[]; rfqs = rr.rfqs||[];
+    allOrders = ro.orders||[];
     localStorage.setItem('rclt_leads_buyer', JSON.stringify(buyers));
     localStorage.setItem('rclt_leads_supplier', JSON.stringify(suppliers));
     localStorage.setItem('rclt_rfqs_all', JSON.stringify(rfqs));
+    localStorage.setItem('rclt_orders', JSON.stringify(allOrders));
     dashAllLeads = buyers.concat(suppliers);
     allRFQs = rfqs;
     renderDashboard();
@@ -1005,15 +1094,16 @@ function renderDashboard() {
   const converted = rfqs.filter(function(r){return r.status==='Converted';}).length;
   const convRate = rfqs.length ? Math.round(converted/rfqs.length*100) : 0;
   const activeLeads = leads.filter(function(l){return l.stage!=='Not Workable'&&l.stage!=='Not Interested';}).length;
+  const ordersCount = allOrders.length;
   document.getElementById('kpi-row').innerHTML = [
     {label:'Total Leads',value:leads.length,sub:typeFilter||'Buyers + Suppliers'},
     {label:'Active Leads',value:activeLeads,sub:'excl. not workable'},
     {label:'Total RFQs',value:rfqs.length,sub:'in period'},
-    {label:'Converted',value:converted,sub:convRate+'% conversion rate'},
-    {label:'Deal Closed',value:leads.filter(function(l){return l.stage==='Deal Closed';}).length,sub:'leads'},
+    {label:'Converted',value:converted,sub:convRate+'% conversion rate',highlight:converted>0},
+    {label:'Orders',value:ordersCount,sub:'all time',highlight:ordersCount>0},
     {label:'Negotiating',value:leads.filter(function(l){return l.stage==='Negotiating';}).length,sub:'leads'},
   ].map(function(k){
-    return '<div class="kpi-card"><div class="kpi-label">'+k.label+'</div><div class="kpi-value">'+k.value+'</div><div class="kpi-sub">'+k.sub+'</div></div>';
+    return '<div class="kpi-card'+(k.highlight?' kpi-highlight':'')+'"><div class="kpi-label">'+k.label+'</div><div class="kpi-value">'+k.value+'</div><div class="kpi-sub">'+k.sub+'</div></div>';
   }).join('');
 
   // Stage donut
@@ -1090,6 +1180,23 @@ function renderDashboard() {
     '<table class="top-table"><thead><tr><th>Material</th><th>Leads</th><th style="width:120px"></th></tr></thead><tbody>' +
     mats.map(function(e){return '<tr><td><span class="mat-chip">'+esc(e[0])+'</span></td><td><strong>'+e[1]+'</strong></td><td><div class="progress-bar"><div class="progress-bar-fill" style="width:'+Math.round(e[1]/maxM*100)+'%"></div></div></td></tr>';}).join('') +
     '</tbody></table>' : '<span style="color:#94a3b8;font-size:12px">No materials data yet</span>';
+
+  // Recent conversions table
+  const convertedRFQs = rfqs.filter(function(r){return r.status==='Converted';}).sort(function(a,b){return new Date(b.updated_at||b.created_at||0)-new Date(a.updated_at||a.created_at||0);}).slice(0,10);
+  document.getElementById('dash-conversions').innerHTML = convertedRFQs.length ?
+    '<table class="top-table"><thead><tr><th>Material</th><th>Qty</th><th>Currency</th><th>Closure Price</th><th>Lead</th><th>Assigned To</th></tr></thead><tbody>' +
+    convertedRFQs.map(function(r){
+      const lead = dashAllLeads.find(function(l){return l.id===r.lead_id;});
+      return '<tr>' +
+        '<td><span class="mat-chip">'+esc(r.material||'&#8212;')+'</span></td>' +
+        '<td>'+(r.qty?esc(r.qty)+' '+(r.unit||''):'&#8212;')+'</td>' +
+        '<td>'+(r.currency||'&#8212;')+'</td>' +
+        '<td>'+(r.deal_closure_price?esc(r.deal_closure_price):'&#8212;')+'</td>' +
+        '<td><strong>'+(lead?esc(lead.company_name):esc(r.lead_id||'&#8212;'))+'</strong>'+(lead?' <span style="color:#64748b;font-size:10px">('+esc(lead.country)+')</span>':'')+'</td>' +
+        '<td>'+(r.assigned_to?esc(r.assigned_to):'&#8212;')+'</td>' +
+        '</tr>';
+    }).join('') + '</tbody></table>'
+    : '<span style="color:#94a3b8;font-size:12px">No converted RFQs in this period</span>';
 
   // Funnel chart
   const funnelData = [
@@ -1547,4 +1654,3 @@ async function saveOrder() {
 </script>
 </body>
 </html>
-
