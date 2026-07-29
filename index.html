@@ -931,8 +931,8 @@ async function saveEditRFQ(rfqId) {
     const card = document.getElementById('rfq-'+rfqId);
     if (card) card.outerHTML = rfqCard(cache[idx]);
 
-    // If newly converted and buyer+supplier both set, create an order
-    if (payload.status === 'Converted' && oldRfq.status !== 'Converted' && buyerId && supplierId) {
+    // If Converted and buyer+supplier both set, create an order
+    if (payload.status === 'Converted' && buyerId && supplierId) {
       const oRes = await api('addOrder', {
         buyer_lead_id: buyerId,
         buyer_name: payload.buyer_name,
