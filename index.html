@@ -873,14 +873,74 @@ function toggleEditRFQ(rfqId) {
     '<div class="form-grid">' +
     '<div class="form-group"><label>Buyer *</label><select id="re-buyer-'+rfqId+'">'+buyerOptions+'</select></div>' +
     '<div class="form-group"><label>Supplier *</label><select id="re-supplier-'+rfqId+'">'+supplierOptions+'</select></div>' +
-    '<div class="form-group"><label>Buyer Price / MT</label><input type="number" id="re-buyer-price-'+rfqId+'" value="'+esc(rfq.deal_closure_price||'')+'" /></div>' +
-    '<div class="form-group"><label>Supplier Price / MT</label><input type="number" id="re-supplier-price-'+rfqId+'" value="" /></div>' +
-    '<div class="form-group"><label>Incoterms</label><select id="re-incoterms-'+rfqId+'"><option value="">&#8212;</option>'+INCOTERMS.map(function(t){return '<option>'+t+'</option>';}).join('')+'</select></div>' +
-    '<div class="form-group"><label>Payment Terms</label><input type="text" id="re-payment-terms-'+rfqId+'" placeholder="e.g. 30% advance, 70% BL" /></div>' +
-    '</div></div>' +
+    '<div class="form-group"><label>Buyer Price / MT</label><input type="number" id="re-buyer-price-'+rfqId+'" value="'+esc(rfq.buyer_price||rfq.deal_closure_price||'')+'" oninput="recalcMargin(\''+rfqId+'\')" /></div>' +
+    '<div class="form-group"><label>Supplier Price / MT</label><input type="number" id="re-supplier-price-'+rfqId+'" value="'+esc(rfq.supplier_price||'')+'" oninput="recalcMargin(\''+rfqId+'\')" /></div>' +
+    '<div class="form-group"><label>Incoterms</label><select id="re-incoterms-'+rfqId+'"><option value="">&#8212;</option>'+INCOTERMS.map(function(t){return '<option'+(t===(rfq.incoterms||'')?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div>' +
+    '<div class="form-group"><label>Payment Terms</label><input type="text" id="re-payment-terms-'+rfqId+'" value="'+esc(rfq.payment_terms||'')+'" placeholder="e.g. 30% advance, 70% BL" /></div>' +
+    '</div>' +
+    '<div style="margin-top:12px">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">' +
+    '<span style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.4px">Cost Breakdown</span>' +
+    '<button type="button" style="font-size:11px;padding:3px 10px;background:#0f3d2e;color:#fff;border:none;border-radius:4px;cursor:pointer" onclick="addCostRow(\''+rfqId+'\')">+ Add Cost</button>' +
+    '</div>' +
+    '<div id="re-costs-'+rfqId+'"></div>' +
+    '</div>' +
+    '<div id="re-margin-'+rfqId+'" style="margin-top:10px;padding:10px;background:#fff;border:1px solid #bbf7d0;border-radius:6px;font-size:12px"></div>' +
+    '</div>' +
     '<div class="form-actions"><button class="btn-cancel" onclick="toggleEditRFQ(\''+rfqId+'\')">Cancel</button>' +
     '<button class="btn-save" onclick="saveEditRFQ(\''+rfqId+'\')">Save</button></div></div>';
   el.style.display='block';
+  // Pre-populate existing costs and recalc margin
+  const existingCosts = rfq.costs ? (typeof rfq.costs === 'string' ? JSON.parse(rfq.costs) : rfq.costs) : [];
+  existingCosts.forEach(function(c){ addCostRow(rfqId, c.label, c.amount); });
+  recalcMargin(rfqId);
+}
+
+const COST_TYPES = ['CHA','Shipping','Logistics Inward','Logistics Outward','Demurrage','Rent','Labour','Processing','Loading','Unloading','Crane','JCB','Hydra','Other'];
+
+function addCostRow(rfqId, label, amount) {
+  const wrap = document.getElementById('re-costs-'+rfqId);
+  if (!wrap) return;
+  const idx = wrap.children.length;
+  const opts = COST_TYPES.map(function(t){return '<option'+(t===(label||'')?' selected':'')+'>'+t+'</option>';}).join('');
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:4px';
+  row.innerHTML =
+    '<select style="flex:1.5;border:1px solid #e2e8f0;border-radius:4px;padding:4px 6px;font-size:12px;background:#fff"><option value="">Select cost type&#8230;</option>'+opts+'</select>' +
+    '<input type="number" placeholder="Amount" value="'+(amount||'')+'" style="flex:1;border:1px solid #e2e8f0;border-radius:4px;padding:4px 6px;font-size:12px" oninput="recalcMargin(\''+rfqId+'\')" />' +
+    '<button type="button" style="background:#fee2e2;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;color:#991b1b;font-size:12px" onclick="this.parentNode.remove();recalcMargin(\''+rfqId+'\')">&#10005;</button>';
+  wrap.appendChild(row);
+  recalcMargin(rfqId);
+}
+
+function getCostRows(rfqId) {
+  const wrap = document.getElementById('re-costs-'+rfqId);
+  if (!wrap) return [];
+  return Array.from(wrap.children).map(function(row){
+    const sel = row.querySelector('select');
+    const inp = row.querySelector('input');
+    return {label: sel ? sel.value : '', amount: inp ? parseFloat(inp.value)||0 : 0};
+  }).filter(function(c){return c.label && c.amount;});
+}
+
+function recalcMargin(rfqId) {
+  const bp = parseFloat((document.getElementById('re-buyer-price-'+rfqId)||{}).value)||0;
+  const sp = parseFloat((document.getElementById('re-supplier-price-'+rfqId)||{}).value)||0;
+  const costs = getCostRows(rfqId);
+  const totalCosts = costs.reduce(function(s,c){return s+c.amount;},0);
+  const gross = bp - sp;
+  const net = gross - totalCosts;
+  const el = document.getElementById('re-margin-'+rfqId);
+  if (!el) return;
+  const rows = costs.map(function(c){
+    return '<tr><td style="color:#64748b;padding:2px 0">&#8722; '+esc(c.label)+'</td><td style="text-align:right;padding:2px 0;color:#ef4444">'+c.amount.toFixed(2)+'</td></tr>';
+  }).join('');
+  el.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+    '<tr><td style="padding:2px 0">Buyer Price / MT</td><td style="text-align:right;padding:2px 0"><strong>'+bp.toFixed(2)+'</strong></td></tr>' +
+    '<tr><td style="color:#64748b;padding:2px 0">&#8722; Supplier Price / MT</td><td style="text-align:right;padding:2px 0;color:#ef4444">'+sp.toFixed(2)+'</td></tr>' +
+    (rows ? '<tr><td colspan="2" style="border-top:1px dashed #e2e8f0;padding:4px 0 2px;font-size:10px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Costs</td></tr>'+rows : '') +
+    '<tr style="border-top:1px solid #0f3d2e"><td style="padding:4px 0 0;font-weight:700">Net Margin / MT</td><td style="text-align:right;padding:4px 0 0;font-weight:800;font-size:15px;color:'+(net>=0?'#166534':'#991b1b')+'">'+net.toFixed(2)+'</td></tr>' +
+    '</table>';
 }
 
 async function saveEditRFQ(rfqId) {
@@ -901,6 +961,8 @@ async function saveEditRFQ(rfqId) {
   const supplierPrice = spEl ? spEl.value||null : null;
   const incoterms = itEl ? itEl.value : (oldRfq.incoterms||'');
   const paymentTerms = ptEl ? ptEl.value.trim() : (oldRfq.payment_terms||'');
+  const costs = getCostRows(rfqId);
+  const costsJson = costs.length ? JSON.stringify(costs) : (oldRfq.costs||'');
 
   const payload = {
     id: rfqId,
@@ -920,7 +982,10 @@ async function saveEditRFQ(rfqId) {
     supplier_lead_id: supplierId,
     supplier_name: supplierLead ? supplierLead.company_name : (oldRfq.supplier_name||''),
     incoterms: incoterms,
-    payment_terms: paymentTerms
+    payment_terms: paymentTerms,
+    buyer_price: buyerPrice,
+    supplier_price: supplierPrice,
+    costs: costsJson
   };
 
   const res = await api('updateRFQ', payload);
@@ -931,7 +996,7 @@ async function saveEditRFQ(rfqId) {
     const card = document.getElementById('rfq-'+rfqId);
     if (card) card.outerHTML = rfqCard(cache[idx]);
 
-    // If Converted and buyer+supplier both set, create an order
+    // If Converted and buyer+supplier both set, create/update order
     if (payload.status === 'Converted' && buyerId && supplierId) {
       const oRes = await api('addOrder', {
         buyer_lead_id: buyerId,
@@ -946,6 +1011,7 @@ async function saveEditRFQ(rfqId) {
         supplier_price: supplierPrice,
         incoterms: incoterms,
         payment_terms: paymentTerms,
+        costs: costsJson,
         status: 'Confirmed',
         by: currentUser
       });
