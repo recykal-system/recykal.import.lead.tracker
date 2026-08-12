@@ -584,8 +584,14 @@ function showToast(msg) {
 }
 
 // ── Leads ──
+let _fetchAllPromise = null;
 async function fetchAll() {
-  const result = await api('getAll', {});
+  if (_fetchAllPromise) return _fetchAllPromise;
+  _fetchAllPromise = api('getAll', {}).then(function(result) {
+    _fetchAllPromise = null;
+    return result;
+  }).catch(function(e) { _fetchAllPromise = null; throw e; });
+  const result = await _fetchAllPromise;
   if (result.error) throw new Error(result.error);
   const buyers = result.buyers || [];
   const suppliers = result.suppliers || [];
@@ -662,7 +668,9 @@ function renderTable(leads) {
 
 // ── Panel ──
 async function openLead(id) {
-  currentLead = allLeads.find(function(l){ return l.id===id; });
+  currentLead = allLeads.find(function(l){ return l.id===id; }) ||
+    buyerLeadsList.find(function(l){ return l.id===id; }) ||
+    supplierLeadsList.find(function(l){ return l.id===id; });
   if (!currentLead) return;
   document.getElementById('panel-title').textContent = currentLead.company_name;
   document.getElementById('panel-meta').textContent = currentLead.country+' · '+(currentTab==='buyer'?'Buyer':'Supplier')+' · Added by '+(currentLead.created_by||'&#8212;');
@@ -1164,12 +1172,14 @@ function renderRFQTable(rfqs) {
 }
 
 async function openLeadFromRFQ(leadId) {
-  if (!allLeads.find(function(l){return l.id===leadId;})) {
-    const res=await api('getLeads',{});
-    allLeads=res.leads||[];
+  let lead = buyerLeadsList.find(function(l){return l.id===leadId;}) ||
+             supplierLeadsList.find(function(l){return l.id===leadId;});
+  if (!lead) {
+    await fetchAll();
+    lead = buyerLeadsList.find(function(l){return l.id===leadId;}) ||
+           supplierLeadsList.find(function(l){return l.id===leadId;});
   }
-  const lead=allLeads.find(function(l){return l.id===leadId;});
-  if (lead) { currentTab=lead.type||'buyer'; openLead(leadId); }
+  if (lead) { currentTab = lead.type||'buyer'; allLeads = currentTab==='buyer' ? buyerLeadsList : supplierLeadsList; openLead(leadId); }
 }
 
 // ── Dashboard ──
