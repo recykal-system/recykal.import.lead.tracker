@@ -584,6 +584,24 @@ function showToast(msg) {
 }
 
 // ── Leads ──
+async function fetchAll() {
+  const result = await api('getAll', {});
+  if (result.error) throw new Error(result.error);
+  const buyers = result.buyers || [];
+  const suppliers = result.suppliers || [];
+  const rfqs = result.rfqs || [];
+  const orders = result.orders || [];
+  localStorage.setItem('rclt_leads_buyer', JSON.stringify(buyers));
+  localStorage.setItem('rclt_leads_supplier', JSON.stringify(suppliers));
+  localStorage.setItem('rclt_rfqs_all', JSON.stringify(rfqs));
+  localStorage.setItem('rclt_orders', JSON.stringify(orders));
+  buyerLeadsList = buyers;
+  supplierLeadsList = suppliers;
+  allOrders = orders;
+  allRFQs = rfqs;
+  return { buyers, suppliers, rfqs, orders };
+}
+
 async function loadLeads() {
   const cacheKey = 'rclt_leads_' + currentTab;
   const cached = localStorage.getItem(cacheKey);
@@ -593,10 +611,8 @@ async function loadLeads() {
     document.getElementById('leads-body').innerHTML = '<tr class="loading-row"><td colspan="8"><span class="spinner"></span> Loading&#8230;</td></tr>';
   }
   try {
-    const result = await api('getLeads', { type: currentTab });
-    if (result.error) throw new Error(result.error);
-    allLeads = result.leads || [];
-    localStorage.setItem(cacheKey, JSON.stringify(allLeads));
+    const r = await fetchAll();
+    allLeads = currentTab === 'buyer' ? r.buyers : r.suppliers;
     rfqCache = {}; applyFilters();
   } catch(e) {
     if (!cached) document.getElementById('leads-body').innerHTML = '<tr class="empty-row"><td colspan="8" style="color:#ef4444">Could not connect. ' + e.message + '</td></tr>';
@@ -1095,15 +1111,12 @@ async function saveLead() {
 
 // ── All RFQs tab ──
 async function loadAllRFQs() {
-  const cacheKey='rclt_rfqs_all';
-  const cached=localStorage.getItem(cacheKey);
+  const cached=localStorage.getItem('rclt_rfqs_all');
   if (cached) { try { allRFQs=JSON.parse(cached); applyRFQFilters(); } catch(e) {} }
   else { document.getElementById('rfq-table-body').innerHTML='<tr class="loading-row"><td colspan="11"><span class="spinner"></span> Loading&#8230;</td></tr>'; }
   try {
-    const result=await api('getAllRFQs',{});
-    if (result.error) throw new Error(result.error);
-    allRFQs=result.rfqs||[];
-    localStorage.setItem(cacheKey,JSON.stringify(allRFQs));
+    const r = await fetchAll();
+    allRFQs = r.rfqs;
     applyRFQFilters();
   } catch(e) {
     if (!cached) document.getElementById('rfq-table-body').innerHTML='<tr class="empty-row"><td colspan="11" style="color:#ef4444">Could not load RFQs. '+e.message+'</td></tr>';
@@ -1167,29 +1180,16 @@ async function loadDashboard() {
   const cacheS = localStorage.getItem('rclt_leads_supplier');
   const cacheR = localStorage.getItem('rclt_rfqs_all');
   const cacheO = localStorage.getItem('rclt_orders');
-  let buyers = cacheB ? JSON.parse(cacheB) : [];
-  let suppliers = cacheS ? JSON.parse(cacheS) : [];
-  let rfqs = cacheR ? JSON.parse(cacheR) : [];
-  allOrders = cacheO ? JSON.parse(cacheO) : allOrders;
-  dashAllLeads = buyers.concat(suppliers);
-  allRFQs = rfqs;
-  if (dashAllLeads.length || rfqs.length) renderDashboard();
-
+  if (cacheB || cacheS || cacheR) {
+    dashAllLeads = (cacheB ? JSON.parse(cacheB) : []).concat(cacheS ? JSON.parse(cacheS) : []);
+    allRFQs = cacheR ? JSON.parse(cacheR) : [];
+    allOrders = cacheO ? JSON.parse(cacheO) : allOrders;
+    renderDashboard();
+  }
   try {
-    const [rb, rs, rr, ro] = await Promise.all([
-      api('getLeads',{type:'buyer'}),
-      api('getLeads',{type:'supplier'}),
-      api('getAllRFQs',{}),
-      api('getOrders',{})
-    ]);
-    buyers = rb.leads||[]; suppliers = rs.leads||[]; rfqs = rr.rfqs||[];
-    allOrders = ro.orders||[];
-    localStorage.setItem('rclt_leads_buyer', JSON.stringify(buyers));
-    localStorage.setItem('rclt_leads_supplier', JSON.stringify(suppliers));
-    localStorage.setItem('rclt_rfqs_all', JSON.stringify(rfqs));
-    localStorage.setItem('rclt_orders', JSON.stringify(allOrders));
-    dashAllLeads = buyers.concat(suppliers);
-    allRFQs = rfqs;
+    const r = await fetchAll();
+    dashAllLeads = r.buyers.concat(r.suppliers);
+    allRFQs = r.rfqs;
     renderDashboard();
   } catch(e) {}
 }
@@ -1423,15 +1423,8 @@ async function loadOrders() {
   if (cached) { try { allOrders = JSON.parse(cached); applyOrderFilters(); } catch(e){} }
   else { document.getElementById('orders-body').innerHTML = '<tr class="loading-row"><td colspan="13"><span class="spinner"></span> Loading&#8230;</td></tr>'; }
   try {
-    const [ob, os, ores] = await Promise.all([
-      api('getLeads',{type:'buyer'}),
-      api('getLeads',{type:'supplier'}),
-      api('getOrders',{})
-    ]);
-    buyerLeadsList = ob.leads || [];
-    supplierLeadsList = os.leads || [];
-    allOrders = ores.orders || [];
-    localStorage.setItem('rclt_orders', JSON.stringify(allOrders));
+    const r = await fetchAll();
+    allOrders = r.orders;
     applyOrderFilters();
   } catch(e) {
     if (!cached) document.getElementById('orders-body').innerHTML = '<tr class="empty-row"><td colspan="13" style="color:#ef4444">Could not load orders. '+e.message+'</td></tr>';
