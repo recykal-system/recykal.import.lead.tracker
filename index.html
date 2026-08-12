@@ -518,6 +518,7 @@ function signOut() {
   document.getElementById('leads-body').innerHTML = '';
 }
 
+let _gisInited = false;
 window.onload = function() {
   const saved = localStorage.getItem('rclt_token');
   if (saved) {
@@ -532,24 +533,46 @@ window.onload = function() {
     } catch(e) {}
   }
   document.getElementById('signin-page').style.display = 'flex';
-  google.accounts.id.initialize({
-    client_id: '990583974585-urcqsg4igf0m4r42h3srhr7qeodk6uk0.apps.googleusercontent.com',
-    callback: handleCredentialResponse,
-    auto_select: true,
-    use_fedcm_for_prompt: true
-  });
-  google.accounts.id.renderButton(
-    document.querySelector('.g_id_signin'),
-    { type: 'standard', size: 'large', theme: 'outline', text: 'sign_in_with', shape: 'rectangular', logo_alignment: 'left' }
-  );
+  if (!_gisInited) {
+    _gisInited = true;
+    google.accounts.id.initialize({
+      client_id: '990583974585-urcqsg4igf0m4r42h3srhr7qeodk6uk0.apps.googleusercontent.com',
+      callback: handleCredentialResponse,
+      auto_select: true,
+      use_fedcm_for_prompt: true
+    });
+    google.accounts.id.renderButton(
+      document.querySelector('.g_id_signin'),
+      { type: 'standard', size: 'large', theme: 'outline', text: 'sign_in_with', shape: 'rectangular', logo_alignment: 'left' }
+    );
+  }
 };
 
 // ── API ──
-async function api(action, data) {
+async function api(action, data, _retry) {
   data = data || {};
   const url = API_URL + '?action=' + action + '&token=' + encodeURIComponent(currentToken) + '&data=' + encodeURIComponent(JSON.stringify(data));
-  const res = await fetch(url, { redirect: 'follow' });
-  return res.json();
+  try {
+    const res = await fetch(url, { redirect: 'follow' });
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch(e) {
+      // Apps Script echo URL returned HTML (404/redirect) — retry up to 2 times
+      if ((_retry||0) < 2) {
+        await new Promise(function(r){setTimeout(r, 800 * ((_retry||0)+1));});
+        return api(action, data, (_retry||0)+1);
+      }
+      console.error('API parse error after retries:', text.slice(0,200));
+      return {error: 'Server returned invalid response. Please try again.'};
+    }
+  } catch(e) {
+    if ((_retry||0) < 2) {
+      await new Promise(function(r){setTimeout(r, 800 * ((_retry||0)+1));});
+      return api(action, data, (_retry||0)+1);
+    }
+    return {error: 'Network error. Please check your connection.'};
+  }
 }
 
 function showToast(msg) {
