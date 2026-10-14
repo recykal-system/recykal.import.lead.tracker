@@ -211,6 +211,8 @@
       <option value="">Everyone</option>
       <option>Iqbal Naseem</option><option>Prafulla Chandra</option>
       <option>Rounak Jindal</option><option>Mayank Dixit</option>
+     <option>Mayank Sanwal</option><option>Kuldeep Jain</option>
+     <option>Pritesh Makwana</option><option>Kunal Miglani</option>
     </select>
   </div>
   <div class="filter-group"><label>Country</label><input type="text" id="f-country" placeholder="e.g. India..." oninput="applyFilters()" /></div>
@@ -235,6 +237,8 @@
       <option value="">Everyone</option>
       <option>Iqbal Naseem</option><option>Prafulla Chandra</option>
       <option>Rounak Jindal</option><option>Mayank Dixit</option>
+      <option>Mayank Sanwal</option><option>Kuldeep Jain</option>
+     <option>Pritesh Makwana</option><option>Kunal Miglani</option>
     </select>
   </div>
   <div class="filter-group"><label>Type</label>
@@ -396,6 +400,8 @@
         <select id="a-assigned">
           <option>Iqbal Naseem</option><option>Prafulla Chandra</option>
           <option>Rounak Jindal</option><option>Mayank Dixit</option>
+         <option>Mayank Sanwal</option><option>Kuldeep Jain</option>
+         <option>Pritesh Makwana</option><option>Kunal Miglani</option>
         </select>
       </div>
       <div class="form-group"><label>POC Name</label><input id="a-poc" type="text" placeholder="Contact person name" /></div>
@@ -468,12 +474,13 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbzjWcvonf3XxXWMF3S7ARt2
 const ALLOWED_DOMAIN = 'recykal.com';
 let currentToken = '';
 
-const TEAM = ['Iqbal Naseem','Prafulla Chandra','Rounak Jindal','Mayank Dixit'];
+const TEAM = ['Iqbal Naseem','Prafulla Chandra','Rounak Jindal','Mayank Dixit','Kuldeep Jain','Kunal Miglani','Pritesh Makwana','Mayank Sanwal'];
 const MATERIALS = {
   Copper:    ['Milberry','Candy','Birch','No 1 Copper','No 2 Copper','Cathode','Wire','Utensil','Berry'],
   Brass:     ['Honey','Label','Hairwire','Ebony','White','Yellow'],
   Aluminium: ['UBC','Tense','TT','Extrusion','Zorba','Wire'],
   Lead:      ['Lead Scrap','Re-melted Lead','Lead Ingot','Dry Battery (Rains)'],
+ Plastic: ['HDPE','PET Flakes']
 };
 const ALL_MATERIALS = Object.values(MATERIALS).flat();
 const STAGES = ['Prospect','Contacted','Interested','Negotiating','Deal Closed','Not Workable','Not Interested'];
