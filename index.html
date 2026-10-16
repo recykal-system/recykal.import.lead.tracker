@@ -436,7 +436,7 @@
           <option>Completed</option><option>Cancelled</option>
         </select>
       </div>
-      <div class="form-group"><label>Buyer Company *</label><select id="ao-buyer"><option value="">Select buyer&#8230;</option></select></div>
+      <div class="form-group"><label>Buyer Company</label><select id="ao-buyer"><option value="">Select buyer&#8230;</option></select></div>
       <div class="form-group"><label>Supplier Company *</label><select id="ao-supplier"><option value="">Select supplier&#8230;</option></select></div>
       <div class="form-group"><label>Material *</label>
         <select id="ao-material"><option value="">Select&#8230;</option></select>
@@ -1795,8 +1795,8 @@ async function saveOrder() {
   const supplierSel = document.getElementById('ao-supplier');
   const material = document.getElementById('ao-material').value;
   const errEl = document.getElementById('add-order-error');
-  if (!buyerSel.value || !supplierSel.value || !material) {
-    errEl.textContent = 'Buyer, supplier, and material are required.';
+  if (!supplierSel.value || !material) {
+    errEl.textContent = 'Supplier and material are required.';
     errEl.style.display = 'block'; return;
   }
   const buyerLead = buyerLeadsList.find(function(l){return l.id===buyerSel.value;});
