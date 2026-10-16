@@ -1519,30 +1519,57 @@ async function openOrder(id) {
 }
 
 function renderOrderPanel(o, payments, remarks) {
-  const margin = (o.buyer_price && o.supplier_price) ? (parseFloat(o.buyer_price) - parseFloat(o.supplier_price)) : null;
+  const lineItems = o.line_items ? (typeof o.line_items==='string' ? JSON.parse(o.line_items) : o.line_items) : [];
+  // Aggregate across line items
+  let totalSupValue = 0, totalBuyValue = 0, totalQty = 0;
+  lineItems.forEach(function(li) {
+    const q = parseFloat(li.qty||0), sp = parseFloat(li.supplier_price||0), bp = parseFloat(li.buyer_price||0);
+    totalQty += q;
+    totalSupValue += q * sp;
+    totalBuyValue += q * bp;
+  });
+  // Fallback to legacy scalar fields if no line items
+  if (!lineItems.length) {
+    totalQty = parseFloat(o.qty||0);
+    totalSupValue = totalQty * parseFloat(o.supplier_price||0);
+    totalBuyValue = totalQty * parseFloat(o.buyer_price||0);
+  }
+  const totalMargin = totalBuyValue - totalSupValue;
   const totalPaid = payments.reduce(function(s,p){return s + parseFloat(p.amount||0);}, 0);
-  const totalBuyerValue = (o.qty && o.buyer_price) ? parseFloat(o.qty) * parseFloat(o.buyer_price) : null;
-  const totalMargin = (o.qty && margin !== null) ? parseFloat(o.qty) * margin : null;
+
+  // Line items table for multi-commodity
+  const lineItemsHtml = lineItems.length > 1
+    ? '<div style="margin-top:8px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">' +
+      '<thead><tr style="background:#0f3d2e;color:#fff">' +
+      '<th style="padding:4px 8px;text-align:left">Material</th><th style="padding:4px 8px;text-align:right">Qty</th><th style="padding:4px 8px;text-align:right">Sup. Price</th><th style="padding:4px 8px;text-align:right">Value</th></tr></thead><tbody>' +
+      lineItems.map(function(li,i){
+        const q=parseFloat(li.qty||0), sp=parseFloat(li.supplier_price||0);
+        return '<tr style="background:'+(i%2?'#f8fafc':'#fff')+'"><td style="padding:3px 8px">'+esc(li.material)+'</td><td style="padding:3px 8px;text-align:right">'+q.toFixed(3)+' '+(li.unit||'MT')+'</td><td style="padding:3px 8px;text-align:right">'+esc(li.currency||o.currency||'USD')+' '+sp.toLocaleString()+'/MT</td><td style="padding:3px 8px;text-align:right">'+(q*sp).toFixed(0)+'</td></tr>';
+      }).join('') +
+      '<tr style="background:#f0fdf4;font-weight:700"><td style="padding:3px 8px">Total</td><td style="padding:3px 8px;text-align:right">'+totalQty.toFixed(3)+' MT</td><td style="padding:3px 8px;text-align:right"></td><td style="padding:3px 8px;text-align:right">'+esc(o.currency||'USD')+' '+totalSupValue.toFixed(0)+'</td></tr>' +
+      '</tbody></table></div>'
+    : '';
 
   const infoSection = '<div class="panel-section"><h3>Order Info</h3>' +
     '<div class="info-row">' +
     '<span><strong>Ref:</strong> '+esc(o.order_ref||'&#8212;')+'</span>' +
     '<span><strong>Status:</strong> <span class="badge badge-'+(ORDER_STATUS_CLASS[o.status]||'draft')+'" style="margin-left:3px">'+esc(o.status)+'</span></span>' +
-    '<span><strong>Material:</strong> '+(function(){ const li = o.line_items ? (typeof o.line_items==='string'?JSON.parse(o.line_items):o.line_items) : []; return li.length ? li.map(function(l){return '<span class="mat-chip" style="margin-right:2px">'+esc(l.material)+'</span>';}).join('') : '<span class="mat-chip">'+esc(o.material||'&#8212;')+'</span>'; })()+'</span>' +
+    '<span><strong>Material:</strong> '+(lineItems.length ? lineItems.map(function(l){return '<span class="mat-chip" style="margin-right:2px">'+esc(l.material)+'</span>';}).join('') : '<span class="mat-chip">'+esc(o.material||'&#8212;')+'</span>')+'</span>' +
     '</div>' +
     '<div class="info-row" style="margin-top:6px">' +
     '<span><strong>Buyer:</strong> '+esc(o.buyer_company||o.buyer_name||'&#8212;')+'</span>' +
     '<span><strong>Supplier:</strong> '+esc(o.supplier_company||o.supplier_name||'&#8212;')+'</span>' +
     '</div>' +
-    '<div class="info-row" style="margin-top:6px">' +
+    lineItemsHtml +
+    (lineItems.length <= 1 ? '<div class="info-row" style="margin-top:6px">' +
     '<span><strong>Qty:</strong> '+(o.qty?esc(o.qty)+' '+esc(o.unit||'MT'):'&#8212;')+'</span>' +
     '<span><strong>Buyer Price:</strong> '+(o.buyer_price?esc(o.currency||'USD')+' '+esc(o.buyer_price)+'/MT':'&#8212;')+'</span>' +
     '<span><strong>Supplier Price:</strong> '+(o.supplier_price?esc(o.currency||'USD')+' '+esc(o.supplier_price)+'/MT':'&#8212;')+'</span>' +
-    '</div>' +
+    '</div>' : '') +
     '<div class="info-row" style="margin-top:6px">' +
-    (margin!==null?'<span><strong>Margin/MT:</strong> <span class="'+(margin>=0?'margin-pos':'margin-neg')+'">'+(margin>=0?'+':'')+margin.toFixed(2)+'</span></span>':'') +
-    (totalMargin!==null?'<span><strong>Total Margin:</strong> <span class="'+(totalMargin>=0?'margin-pos':'margin-neg')+'">'+(totalMargin>=0?'+':'')+totalMargin.toFixed(0)+'</span></span>':'') +
-    (totalBuyerValue?'<span><strong>Buyer Value:</strong> '+esc(o.currency||'USD')+' '+totalBuyerValue.toFixed(0)+'</span>':'') +
+    (totalMargin!==0?'<span><strong>Total Margin:</strong> <span class="'+(totalMargin>=0?'margin-pos':'margin-neg')+'">'+(totalMargin>=0?'+':'')+totalMargin.toFixed(0)+' '+esc(o.currency||'USD')+'</span></span>':'') +
+    (totalBuyValue?'<span><strong>Buyer Value:</strong> '+esc(o.currency||'USD')+' '+totalBuyValue.toFixed(0)+'</span>':'') +
+    (totalSupValue?'<span><strong>Sup. Value:</strong> '+esc(o.currency||'USD')+' '+totalSupValue.toFixed(0)+'</span>':'') +
     '</div>' +
     '<div class="info-row" style="margin-top:6px">' +
     '<span><strong>Incoterms:</strong> '+esc(o.incoterms||'&#8212;')+'</span>' +
@@ -1775,25 +1802,37 @@ function getOrderCostRows() {
 }
 
 function recalcOrderMargin() {
-  // Sum from line items table
+  // Compute totals weighted by qty across all line items
   const liRows = document.querySelectorAll('#eo-line-rows tr');
-  let bp = 0, sp = 0;
-  liRows.forEach(function(r) { bp += parseFloat(r.querySelector('.eo-lr-buy').value||0); sp += parseFloat(r.querySelector('.eo-lr-sup').value||0); });
-  if (!bp && !sp) { bp = parseFloat((document.getElementById('eo-buyer-price')||{}).value)||0; sp = parseFloat((document.getElementById('eo-supplier-price')||{}).value)||0; }
+  let totalBuyValue = 0, totalSupValue = 0, totalQty = 0;
+  liRows.forEach(function(r) {
+    const q = parseFloat(r.querySelector('.eo-lr-qty').value||0);
+    const bp = parseFloat(r.querySelector('.eo-lr-buy').value||0);
+    const sp = parseFloat(r.querySelector('.eo-lr-sup').value||0);
+    totalQty += q;
+    totalBuyValue += q * bp;
+    totalSupValue += q * sp;
+  });
   const costs = getOrderCostRows();
   const totalCosts = costs.reduce(function(s,c){return s+c.amount;},0);
-  const gross = bp - sp;
-  const net = gross - totalCosts;
+  const grossMargin = totalBuyValue - totalSupValue;
+  const netMargin = grossMargin - totalCosts;
   const el = document.getElementById('eo-margin');
   if (!el) return;
-  const rows = costs.map(function(c){
+  const multiLine = liRows.length > 1;
+  const label = multiLine ? 'Total' : '/MT';
+  const divisor = (multiLine || totalQty === 0) ? 1 : totalQty;
+  const dispBuy = multiLine ? totalBuyValue : (totalQty ? totalBuyValue / totalQty : 0);
+  const dispSup = multiLine ? totalSupValue : (totalQty ? totalSupValue / totalQty : 0);
+  const dispNet = multiLine ? netMargin : (totalQty ? netMargin / totalQty : 0);
+  const costRows = costs.map(function(c){
     return '<tr><td style="color:#64748b;padding:2px 0">&#8722; '+esc(c.label)+'</td><td style="text-align:right;padding:2px 0;color:#ef4444">'+c.amount.toFixed(2)+'</td></tr>';
   }).join('');
   el.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
-    '<tr><td style="padding:2px 0">Buyer Price / MT</td><td style="text-align:right;padding:2px 0"><strong>'+bp.toFixed(2)+'</strong></td></tr>' +
-    '<tr><td style="color:#64748b;padding:2px 0">&#8722; Supplier Price / MT</td><td style="text-align:right;padding:2px 0;color:#ef4444">'+sp.toFixed(2)+'</td></tr>' +
-    (rows ? '<tr><td colspan="2" style="border-top:1px dashed #e2e8f0;padding:4px 0 2px;font-size:10px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Costs</td></tr>'+rows : '') +
-    '<tr style="border-top:1px solid #0f3d2e"><td style="padding:4px 0 0;font-weight:700">Net Margin / MT</td><td style="text-align:right;padding:4px 0 0;font-weight:800;font-size:15px;color:'+(net>=0?'#166534':'#991b1b')+'">'+net.toFixed(2)+'</td></tr>' +
+    '<tr><td style="padding:2px 0">Buyer Value'+label+'</td><td style="text-align:right;padding:2px 0"><strong>'+(dispBuy||0).toFixed(2)+'</strong></td></tr>' +
+    '<tr><td style="color:#64748b;padding:2px 0">&#8722; Supplier Value'+label+'</td><td style="text-align:right;padding:2px 0;color:#ef4444">'+(dispSup||0).toFixed(2)+'</td></tr>' +
+    (costRows ? '<tr><td colspan="2" style="border-top:1px dashed #e2e8f0;padding:4px 0 2px;font-size:10px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Costs</td></tr>'+costRows : '') +
+    '<tr style="border-top:1px solid #0f3d2e"><td style="padding:4px 0 0;font-weight:700">Net Margin'+label+'</td><td style="text-align:right;padding:4px 0 0;font-weight:800;font-size:15px;color:'+(dispNet>=0?'#166534':'#991b1b')+'">'+(dispNet>=0?'+':'')+dispNet.toFixed(2)+'</td></tr>' +
     '</table>';
 }
 
