@@ -557,8 +557,7 @@ window.onload = function() {
     google.accounts.id.initialize({
       client_id: '990583974585-urcqsg4igf0m4r42h3srhr7qeodk6uk0.apps.googleusercontent.com',
       callback: handleCredentialResponse,
-      auto_select: true,
-      use_fedcm_for_prompt: true
+      auto_select: true
     });
     google.accounts.id.renderButton(
       document.querySelector('.g_id_signin'),
@@ -1079,6 +1078,7 @@ async function saveEditRFQ(rfqId) {
         incoterms: incoterms,
         payment_terms: paymentTerms,
         costs: costsJson,
+        line_items: JSON.stringify([{material: payload.material, hsn:'', qty: payload.qty||'', unit: payload.unit||'MT', supplier_price: supplierPrice||'', buyer_price: buyerPrice||'', currency: payload.currency||'USD', amount: (payload.qty && supplierPrice ? (parseFloat(payload.qty)*parseFloat(supplierPrice)).toFixed(2) : '')}]),
         status: 'Confirmed',
         by: currentUser
       });
