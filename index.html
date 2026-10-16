@@ -438,18 +438,29 @@
       </div>
       <div class="form-group"><label>Buyer Company</label><select id="ao-buyer"><option value="">Select buyer&#8230;</option></select></div>
       <div class="form-group"><label>Supplier Company *</label><select id="ao-supplier"><option value="">Select supplier&#8230;</option></select></div>
-      <div class="form-group"><label>Material *</label>
-        <select id="ao-material"><option value="">Select&#8230;</option></select>
+      <div class="form-group full" style="grid-column:1/-1">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <label style="margin:0">Line Items (Materials &amp; Rates)</label>
+          <button type="button" class="btn-sm" onclick="addOrderLineRow()" style="font-size:11px;padding:3px 10px">+ Add Row</button>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px" id="ao-line-table">
+          <thead><tr style="background:#f1f5f9">
+            <th style="text-align:left;padding:4px 6px;font-weight:600">Material *</th>
+            <th style="text-align:left;padding:4px 6px;font-weight:600">HSN</th>
+            <th style="text-align:right;padding:4px 6px;font-weight:600">Qty</th>
+            <th style="padding:4px 4px;font-weight:600">Unit</th>
+            <th style="text-align:right;padding:4px 6px;font-weight:600">Sup. Price</th>
+            <th style="text-align:right;padding:4px 6px;font-weight:600">Buy. Price</th>
+            <th style="padding:4px 4px;font-weight:600">Cur</th>
+            <th style="padding:4px 4px"></th>
+          </tr></thead>
+          <tbody id="ao-line-rows"></tbody>
+        </table>
+        <div id="ao-line-total" style="text-align:right;font-size:11px;color:#64748b;margin-top:4px"></div>
       </div>
-      <div class="form-group"><label>Qty</label><input id="ao-qty" type="number" placeholder="e.g. 25" /></div>
-      <div class="form-group"><label>Unit</label>
-        <select id="ao-unit"><option>MT</option><option>KG</option><option>TON</option></select>
-      </div>
-      <div class="form-group"><label>Currency</label>
+      <div class="form-group"><label>Overall Currency</label>
         <select id="ao-currency"><option>USD</option><option>EUR</option><option>GBP</option><option>INR</option><option>AED</option></select>
       </div>
-      <div class="form-group"><label>Buyer Price / MT</label><input id="ao-buyer-price" type="number" placeholder="0.00" /></div>
-      <div class="form-group"><label>Supplier Price / MT</label><input id="ao-supplier-price" type="number" placeholder="0.00" /></div>
       <div class="form-group"><label>Incoterms</label>
         <select id="ao-incoterms"><option value="">&#8212;</option><option>FOB</option><option>CIF</option><option>CFR</option><option>EXW</option><option>DDP</option><option>FCA</option><option>CPT</option><option>CIP</option></select>
       </div>
@@ -1479,7 +1490,7 @@ function renderOrdersTable(orders) {
       '<td><strong>'+esc(o.order_ref||'&#8212;')+'</strong></td>' +
       '<td>'+esc(o.buyer_company||o.buyer_name||'&#8212;')+'</td>' +
       '<td>'+esc(o.supplier_company||o.supplier_name||'&#8212;')+'</td>' +
-      '<td><span class="mat-chip">'+esc(o.material||'&#8212;')+'</span></td>' +
+      '<td>'+(function(){ const li = o.line_items ? (typeof o.line_items==='string'?JSON.parse(o.line_items):o.line_items) : []; return li.length ? li.map(function(l){return '<span class="mat-chip" style="margin-right:2px">'+esc(l.material)+'</span>';}).join('') : '<span class="mat-chip">'+esc(o.material||'&#8212;')+'</span>'; })()+'</td>' +
       '<td style="font-size:11px">'+(o.qty?esc(o.qty)+' '+esc(o.unit||'MT'):'<span style="color:#94a3b8">&#8212;</span>')+'</td>' +
       '<td style="font-size:11px">'+(o.buyer_price?esc(o.currency||'USD')+' '+esc(o.buyer_price):'<span style="color:#94a3b8">&#8212;</span>')+'</td>' +
       '<td style="font-size:11px">'+(o.supplier_price?esc(o.currency||'USD')+' '+esc(o.supplier_price):'<span style="color:#94a3b8">&#8212;</span>')+'</td>' +
@@ -1517,7 +1528,7 @@ function renderOrderPanel(o, payments, remarks) {
     '<div class="info-row">' +
     '<span><strong>Ref:</strong> '+esc(o.order_ref||'&#8212;')+'</span>' +
     '<span><strong>Status:</strong> <span class="badge badge-'+(ORDER_STATUS_CLASS[o.status]||'draft')+'" style="margin-left:3px">'+esc(o.status)+'</span></span>' +
-    '<span><strong>Material:</strong> <span class="mat-chip">'+esc(o.material||'&#8212;')+'</span></span>' +
+    '<span><strong>Material:</strong> '+(function(){ const li = o.line_items ? (typeof o.line_items==='string'?JSON.parse(o.line_items):o.line_items) : []; return li.length ? li.map(function(l){return '<span class="mat-chip" style="margin-right:2px">'+esc(l.material)+'</span>';}).join('') : '<span class="mat-chip">'+esc(o.material||'&#8212;')+'</span>'; })()+'</span>' +
     '</div>' +
     '<div class="info-row" style="margin-top:6px">' +
     '<span><strong>Buyer:</strong> '+esc(o.buyer_company||o.buyer_name||'&#8212;')+'</span>' +
@@ -1647,12 +1658,22 @@ function openEditOrder() {
     '<div class="form-group"><label>Status</label><select id="eo-status">'+ORDER_STATUSES.map(function(s){return '<option'+(s===o.status?' selected':'')+'>'+s+'</option>';}).join('')+'</select></div>' +
     '<div class="form-group"><label>Buyer</label><select id="eo-buyer">'+buyerOptions+'</select></div>' +
     '<div class="form-group"><label>Supplier</label><select id="eo-supplier">'+supplierOptions+'</select></div>' +
-    '<div class="form-group"><label>Material</label><select id="eo-material"><option value="">&#8212;</option>'+matOptions+'</select></div>' +
-    '<div class="form-group"><label>Qty</label><input id="eo-qty" type="number" value="'+esc(o.qty||'')+'" /></div>' +
-    '<div class="form-group"><label>Unit</label><select id="eo-unit">'+UNITS.map(function(u){return '<option'+(u===(o.unit||'MT')?' selected':'')+'>'+u+'</option>';}).join('')+'</select></div>' +
+    '<div class="form-group full" style="grid-column:1/-1">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+    '<label style="margin:0">Line Items (Materials &amp; Rates)</label>' +
+    '<button type="button" class="btn-sm" onclick="addOrderLineRowEdit()" style="font-size:11px;padding:3px 10px">+ Add Row</button></div>' +
+    '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f1f5f9">' +
+    '<th style="text-align:left;padding:4px 6px;font-weight:600">Material</th>' +
+    '<th style="text-align:left;padding:4px 6px;font-weight:600">HSN</th>' +
+    '<th style="text-align:right;padding:4px 6px;font-weight:600">Qty</th>' +
+    '<th style="padding:4px 4px;font-weight:600">Unit</th>' +
+    '<th style="text-align:right;padding:4px 6px;font-weight:600">Sup. Price</th>' +
+    '<th style="text-align:right;padding:4px 6px;font-weight:600">Buy. Price</th>' +
+    '<th style="padding:4px 4px;font-weight:600">Cur</th>' +
+    '<th style="padding:4px 4px"></th>' +
+    '</tr></thead><tbody id="eo-line-rows"></tbody></table>' +
+    '<div id="eo-line-total" style="text-align:right;font-size:11px;color:#64748b;margin-top:4px"></div></div>' +
     '<div class="form-group"><label>Currency</label><select id="eo-currency">'+CURRENCIES.map(function(c){return '<option'+(c===(o.currency||'USD')?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>' +
-    '<div class="form-group"><label>Buyer Price/MT</label><input id="eo-buyer-price" type="number" value="'+esc(o.buyer_price||'')+'" oninput="recalcOrderMargin()" /></div>' +
-    '<div class="form-group"><label>Supplier Price/MT</label><input id="eo-supplier-price" type="number" value="'+esc(o.supplier_price||'')+'" oninput="recalcOrderMargin()" /></div>' +
     '<div class="form-group"><label>Incoterms</label><select id="eo-incoterms"><option value="">&#8212;</option>'+INCOTERMS.map(function(t){return '<option'+(t===o.incoterms?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div>' +
     '<div class="form-group"><label>Payment Terms</label><input id="eo-payment-terms" value="'+esc(o.payment_terms||'')+'" /></div>' +
     '<div class="form-group full" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px">' +
@@ -1674,10 +1695,59 @@ function openEditOrder() {
     '</div><div class="form-actions">' +
     '<button class="btn-cancel" onclick="openOrder(\''+o.id+'\')">Cancel</button>' +
     '<button class="btn-save" onclick="saveEditOrder(\''+o.id+'\')">Save Changes</button></div></div>';
+  // Pre-populate line items
+  const existingLines = o.line_items ? (typeof o.line_items === 'string' ? JSON.parse(o.line_items) : o.line_items) : [];
+  if (existingLines.length) {
+    existingLines.forEach(function(li){ addOrderLineRowEdit(li.material, li.hsn, li.qty, li.unit, li.supplier_price, li.buyer_price, li.currency); });
+  } else if (o.material) {
+    addOrderLineRowEdit(o.material, '', o.qty, o.unit, o.supplier_price, o.buyer_price, o.currency);
+  } else {
+    addOrderLineRowEdit();
+  }
   // Pre-populate existing costs
   const existingCosts = o.costs ? (typeof o.costs === 'string' ? JSON.parse(o.costs) : o.costs) : [];
   existingCosts.forEach(function(c){ addOrderCostRow(c.label, c.amount); });
   recalcOrderMargin();
+}
+
+let _editLineRowIdx = 0;
+function addOrderLineRowEdit(mat, hsn, qty, unit, supPrice, buyPrice, cur) {
+  const idx = _editLineRowIdx++;
+  const tbody = document.getElementById('eo-line-rows');
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  tr.style.borderBottom = '1px solid #f1f5f9';
+  tr.innerHTML =
+    '<td style="padding:3px 4px"><select style="width:130px;font-size:11px;padding:3px 4px;border:1px solid #e2e8f0;border-radius:3px" class="eo-lr-mat">'+_matOptions(mat||'')+'</select></td>' +
+    '<td style="padding:3px 4px"><input class="eo-lr-hsn" style="width:70px;font-size:11px;padding:3px 4px;border:1px solid #e2e8f0;border-radius:3px" placeholder="HSN" value="'+(hsn||'')+'" /></td>' +
+    '<td style="padding:3px 4px"><input class="eo-lr-qty" type="number" step="0.001" style="width:60px;font-size:11px;padding:3px 4px;border:1px solid #e2e8f0;border-radius:3px;text-align:right" placeholder="0" value="'+(qty||'')+'" /></td>' +
+    '<td style="padding:3px 2px"><select class="eo-lr-unit" style="font-size:11px;padding:3px 2px;border:1px solid #e2e8f0;border-radius:3px"><option>MT</option><option>KG</option><option>PCS</option><option>LOT</option></select></td>' +
+    '<td style="padding:3px 4px"><input class="eo-lr-sup" type="number" step="0.01" style="width:65px;font-size:11px;padding:3px 4px;border:1px solid #e2e8f0;border-radius:3px;text-align:right" placeholder="0.00" value="'+(supPrice||'')+'" /></td>' +
+    '<td style="padding:3px 4px"><input class="eo-lr-buy" type="number" step="0.01" style="width:65px;font-size:11px;padding:3px 4px;border:1px solid #e2e8f0;border-radius:3px;text-align:right" placeholder="0.00" value="'+(buyPrice||'')+'" /></td>' +
+    '<td style="padding:3px 2px"><select class="eo-lr-cur" style="font-size:11px;padding:3px 2px;border:1px solid #e2e8f0;border-radius:3px"><option>USD</option><option>EUR</option><option>GBP</option><option>AED</option><option>INR</option></select></td>' +
+    '<td style="padding:3px 2px"><button type="button" onclick="this.closest(\'tr\').remove()" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:16px;padding:0 4px">×</button></td>';
+  if (unit) { const s = tr.querySelector('.eo-lr-unit'); for(var i=0;i<s.options.length;i++){if(s.options[i].value===unit)s.selectedIndex=i;} }
+  if (cur)  { const s = tr.querySelector('.eo-lr-cur');  for(var i=0;i<s.options.length;i++){if(s.options[i].value===cur) s.selectedIndex=i;} }
+  tbody.appendChild(tr);
+}
+
+function readEditLineItems() {
+  const rows = document.querySelectorAll('#eo-line-rows tr');
+  return Array.from(rows).map(function(r) {
+    const mat = r.querySelector('.eo-lr-mat').value;
+    const qty = r.querySelector('.eo-lr-qty').value;
+    const sup = r.querySelector('.eo-lr-sup').value;
+    return {
+      material: mat,
+      hsn: r.querySelector('.eo-lr-hsn').value.trim(),
+      qty: qty,
+      unit: r.querySelector('.eo-lr-unit').value,
+      supplier_price: sup,
+      buyer_price: r.querySelector('.eo-lr-buy').value,
+      currency: r.querySelector('.eo-lr-cur').value,
+      amount: (qty && sup) ? (parseFloat(qty)*parseFloat(sup)).toFixed(2) : ''
+    };
+  }).filter(function(li){ return li.material; });
 }
 
 function addOrderCostRow(label, amount) {
@@ -1705,8 +1775,11 @@ function getOrderCostRows() {
 }
 
 function recalcOrderMargin() {
-  const bp = parseFloat((document.getElementById('eo-buyer-price')||{}).value)||0;
-  const sp = parseFloat((document.getElementById('eo-supplier-price')||{}).value)||0;
+  // Sum from line items table
+  const liRows = document.querySelectorAll('#eo-line-rows tr');
+  let bp = 0, sp = 0;
+  liRows.forEach(function(r) { bp += parseFloat(r.querySelector('.eo-lr-buy').value||0); sp += parseFloat(r.querySelector('.eo-lr-sup').value||0); });
+  if (!bp && !sp) { bp = parseFloat((document.getElementById('eo-buyer-price')||{}).value)||0; sp = parseFloat((document.getElementById('eo-supplier-price')||{}).value)||0; }
   const costs = getOrderCostRows();
   const totalCosts = costs.reduce(function(s,c){return s+c.amount;},0);
   const gross = bp - sp;
@@ -1737,12 +1810,8 @@ async function saveEditOrder(id) {
     buyer_name: buyerLead ? buyerLead.company_name : '',
     supplier_lead_id: supplierSel.value,
     supplier_name: supplierLead ? supplierLead.company_name : '',
-    material: document.getElementById('eo-material').value,
-    qty: document.getElementById('eo-qty').value || null,
-    unit: document.getElementById('eo-unit').value,
+    ...(function(){ const li = readEditLineItems(); const f = li[0]||{}; return { material: f.material||'', qty: f.qty||null, unit: f.unit||'MT', buyer_price: f.buyer_price||null, supplier_price: f.supplier_price||null, line_items: li.length ? JSON.stringify(li) : '' }; })(),
     currency: document.getElementById('eo-currency').value,
-    buyer_price: document.getElementById('eo-buyer-price').value || null,
-    supplier_price: document.getElementById('eo-supplier-price').value || null,
     incoterms: document.getElementById('eo-incoterms').value,
     payment_terms: document.getElementById('eo-payment-terms').value.trim(),
     costs: (function(){ const c=getOrderCostRows(); return c.length?JSON.stringify(c):''; })(),
@@ -1780,9 +1849,9 @@ function openAddOrderModal() {
   const sSel = document.getElementById('ao-supplier');
   bSel.innerHTML = '<option value="">Select buyer&#8230;</option>' + buyerLeadsList.map(function(l){return '<option value="'+esc(l.id)+'">'+esc(l.company_name)+' ('+esc(l.country)+')</option>';}).join('');
   sSel.innerHTML = '<option value="">Select supplier&#8230;</option>' + supplierLeadsList.map(function(l){return '<option value="'+esc(l.id)+'">'+esc(l.company_name)+' ('+esc(l.country)+')</option>';}).join('');
-  const mSel = document.getElementById('ao-material');
-  mSel.innerHTML = '<option value="">Select&#8230;</option>' + ALL_MATERIALS.map(function(m){return '<option>'+m+'</option>';}).join('');
   document.getElementById('add-order-error').style.display = 'none';
+  document.getElementById('ao-line-rows').innerHTML = '';
+  addOrderLineRow(); // start with one blank row
   document.getElementById('add-order-modal').classList.add('open');
 }
 
@@ -1790,15 +1859,71 @@ function closeAddOrderModal() {
   document.getElementById('add-order-modal').classList.remove('open');
 }
 
+function _matOptions(selected) {
+  return '<option value="">Select&#8230;</option>' + ALL_MATERIALS.map(function(m){return '<option'+(m===selected?' selected':'')+'>'+m+'</option>';}).join('');
+}
+
+let _lineRowIdx = 0;
+function addOrderLineRow(mat, hsn, qty, unit, supPrice, buyPrice) {
+  const idx = _lineRowIdx++;
+  const tbody = document.getElementById('ao-line-rows');
+  const tr = document.createElement('tr');
+  tr.id = 'ao-lr-'+idx;
+  tr.style.borderBottom = '1px solid #f1f5f9';
+  tr.innerHTML =
+    '<td style="padding:3px 4px"><select style="width:140px;font-size:11px;padding:3px 4px;border:1px solid #e2e8f0;border-radius:3px" class="ao-lr-mat">'+_matOptions(mat||'')+'</select></td>' +
+    '<td style="padding:3px 4px"><input class="ao-lr-hsn" style="width:80px;font-size:11px;padding:3px 4px;border:1px solid #e2e8f0;border-radius:3px" placeholder="HSN" value="'+(hsn||'')+'" /></td>' +
+    '<td style="padding:3px 4px"><input class="ao-lr-qty" type="number" step="0.001" style="width:65px;font-size:11px;padding:3px 4px;border:1px solid #e2e8f0;border-radius:3px;text-align:right" placeholder="0" value="'+(qty||'')+'" oninput="calcOrderLineTotal()" /></td>' +
+    '<td style="padding:3px 2px"><select class="ao-lr-unit" style="font-size:11px;padding:3px 2px;border:1px solid #e2e8f0;border-radius:3px"><option>MT</option><option>KG</option><option>PCS</option><option>LOT</option></select></td>' +
+    '<td style="padding:3px 4px"><input class="ao-lr-sup" type="number" step="0.01" style="width:70px;font-size:11px;padding:3px 4px;border:1px solid #e2e8f0;border-radius:3px;text-align:right" placeholder="0.00" value="'+(supPrice||'')+'" oninput="calcOrderLineTotal()" /></td>' +
+    '<td style="padding:3px 4px"><input class="ao-lr-buy" type="number" step="0.01" style="width:70px;font-size:11px;padding:3px 4px;border:1px solid #e2e8f0;border-radius:3px;text-align:right" placeholder="0.00" value="'+(buyPrice||'')+'" /></td>' +
+    '<td style="padding:3px 2px"><select class="ao-lr-cur" style="font-size:11px;padding:3px 2px;border:1px solid #e2e8f0;border-radius:3px"><option>USD</option><option>EUR</option><option>GBP</option><option>AED</option><option>INR</option></select></td>' +
+    '<td style="padding:3px 2px"><button type="button" onclick="this.closest(\'tr\').remove();calcOrderLineTotal()" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:16px;padding:0 4px">×</button></td>';
+  if (unit) { const s = tr.querySelector('.ao-lr-unit'); for(var i=0;i<s.options.length;i++){if(s.options[i].value===unit)s.selectedIndex=i;} }
+  tbody.appendChild(tr);
+}
+
+function calcOrderLineTotal() {
+  const rows = document.querySelectorAll('#ao-line-rows tr');
+  let total = 0;
+  rows.forEach(function(r) {
+    const qty = parseFloat(r.querySelector('.ao-lr-qty').value||0);
+    const sup = parseFloat(r.querySelector('.ao-lr-sup').value||0);
+    if (qty && sup) total += qty * sup;
+  });
+  const el = document.getElementById('ao-line-total');
+  if (el) el.textContent = total > 0 ? 'Est. Buy Value: ' + total.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : '';
+}
+
+function readOrderLineItems() {
+  const rows = document.querySelectorAll('#ao-line-rows tr');
+  return Array.from(rows).map(function(r) {
+    const mat = r.querySelector('.ao-lr-mat').value;
+    const qty = r.querySelector('.ao-lr-qty').value;
+    const sup = r.querySelector('.ao-lr-sup').value;
+    return {
+      material: mat,
+      hsn: r.querySelector('.ao-lr-hsn').value.trim(),
+      qty: qty,
+      unit: r.querySelector('.ao-lr-unit').value,
+      supplier_price: sup,
+      buyer_price: r.querySelector('.ao-lr-buy').value,
+      currency: r.querySelector('.ao-lr-cur').value,
+      amount: (qty && sup) ? (parseFloat(qty)*parseFloat(sup)).toFixed(2) : ''
+    };
+  }).filter(function(li){ return li.material; });
+}
+
 async function saveOrder() {
   const buyerSel = document.getElementById('ao-buyer');
   const supplierSel = document.getElementById('ao-supplier');
-  const material = document.getElementById('ao-material').value;
+  const lineItems = readOrderLineItems();
   const errEl = document.getElementById('add-order-error');
-  if (!supplierSel.value || !material) {
-    errEl.textContent = 'Supplier and material are required.';
+  if (!supplierSel.value || !lineItems.length) {
+    errEl.textContent = 'Supplier and at least one line item (with material) are required.';
     errEl.style.display = 'block'; return;
   }
+  const first = lineItems[0];
   const buyerLead = buyerLeadsList.find(function(l){return l.id===buyerSel.value;});
   const supplierLead = supplierLeadsList.find(function(l){return l.id===supplierSel.value;});
   const btn = document.getElementById('add-order-save-btn');
@@ -1811,12 +1936,12 @@ async function saveOrder() {
       buyer_name: buyerLead ? buyerLead.company_name : '',
       supplier_lead_id: supplierSel.value,
       supplier_name: supplierLead ? supplierLead.company_name : '',
-      material,
-      qty: document.getElementById('ao-qty').value || null,
-      unit: document.getElementById('ao-unit').value,
+      material: first.material,
+      qty: first.qty || null,
+      unit: first.unit,
       currency: document.getElementById('ao-currency').value,
-      buyer_price: document.getElementById('ao-buyer-price').value || null,
-      supplier_price: document.getElementById('ao-supplier-price').value || null,
+      buyer_price: first.buyer_price || null,
+      supplier_price: first.supplier_price || null,
       incoterms: document.getElementById('ao-incoterms').value,
       payment_terms: document.getElementById('ao-payment-terms').value.trim(),
       container_number: document.getElementById('ao-container').value.trim(),
@@ -1827,6 +1952,7 @@ async function saveOrder() {
       etd: document.getElementById('ao-etd').value,
       eta: document.getElementById('ao-eta').value,
       notes: document.getElementById('ao-notes').value.trim(),
+      line_items: JSON.stringify(lineItems),
       by: currentUser
     });
     btn.disabled = false; btn.textContent = 'Add Order';
