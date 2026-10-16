@@ -557,7 +557,7 @@ window.onload = function() {
     google.accounts.id.initialize({
       client_id: '990583974585-urcqsg4igf0m4r42h3srhr7qeodk6uk0.apps.googleusercontent.com',
       callback: handleCredentialResponse,
-      auto_select: true
+      auto_select: false
     });
     google.accounts.id.renderButton(
       document.querySelector('.g_id_signin'),
