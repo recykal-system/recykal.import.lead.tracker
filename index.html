@@ -1482,18 +1482,33 @@ function renderOrdersTable(orders) {
   const tbody = document.getElementById('orders-body');
   if (!orders.length) { tbody.innerHTML = '<tr class="empty-row"><td colspan="13">No orders found. Click "+ Add Order" to create one.</td></tr>'; return; }
   tbody.innerHTML = orders.map(function(o) {
-    const margin = (o.buyer_price && o.supplier_price) ? (parseFloat(o.buyer_price) - parseFloat(o.supplier_price)) : null;
-    const marginHtml = margin !== null
-      ? '<span class="'+(margin>=0?'margin-pos':'margin-neg')+'">'+(margin>=0?'+':'')+margin.toFixed(2)+'</span>'
+    const li = o.line_items ? (typeof o.line_items==='string' ? JSON.parse(o.line_items) : o.line_items) : [];
+    // Compute totals from line items if available, else fall back to scalars
+    let totalQty = 0, totalBuyVal = 0, totalSupVal = 0;
+    if (li.length) {
+      li.forEach(function(l){ const q=parseFloat(l.qty||0); totalQty+=q; totalBuyVal+=q*parseFloat(l.buyer_price||0); totalSupVal+=q*parseFloat(l.supplier_price||0); });
+    } else {
+      totalQty = parseFloat(o.qty||0);
+      totalBuyVal = totalQty * parseFloat(o.buyer_price||0);
+      totalSupVal = totalQty * parseFloat(o.supplier_price||0);
+    }
+    const totalMargin = totalBuyVal - totalSupVal;
+    const hasMargin = li.length ? (totalBuyVal > 0) : (o.buyer_price && o.supplier_price);
+    const marginHtml = hasMargin
+      ? '<span class="'+(totalMargin>=0?'margin-pos':'margin-neg')+'">'+(totalMargin>=0?'+':'')+totalMargin.toFixed(0)+'</span>'
       : '<span style="color:#94a3b8">&#8212;</span>';
+    const qtyDisplay = totalQty ? totalQty.toFixed(3).replace(/\.?0+$/,'')+' '+(li.length?'MT':esc(o.unit||'MT')) : '&#8212;';
+    const matChips = li.length ? li.map(function(l){return '<span class="mat-chip" style="margin-right:2px">'+esc(l.material)+'</span>';}).join('') : '<span class="mat-chip">'+esc(o.material||'&#8212;')+'</span>';
+    const buyDisplay = li.length ? (totalBuyVal ? esc(o.currency||'USD')+' '+totalBuyVal.toFixed(0) : '&#8212;') : (o.buyer_price ? esc(o.currency||'USD')+' '+esc(o.buyer_price) : '&#8212;');
+    const supDisplay = li.length ? (totalSupVal ? esc(o.currency||'USD')+' '+totalSupVal.toFixed(0) : '&#8212;') : (o.supplier_price ? esc(o.currency||'USD')+' '+esc(o.supplier_price) : '&#8212;');
     return '<tr onclick="openOrder(\''+o.id+'\')">' +
       '<td><strong>'+esc(o.order_ref||'&#8212;')+'</strong></td>' +
       '<td>'+esc(o.buyer_company||o.buyer_name||'&#8212;')+'</td>' +
       '<td>'+esc(o.supplier_company||o.supplier_name||'&#8212;')+'</td>' +
-      '<td>'+(function(){ const li = o.line_items ? (typeof o.line_items==='string'?JSON.parse(o.line_items):o.line_items) : []; return li.length ? li.map(function(l){return '<span class="mat-chip" style="margin-right:2px">'+esc(l.material)+'</span>';}).join('') : '<span class="mat-chip">'+esc(o.material||'&#8212;')+'</span>'; })()+'</td>' +
-      '<td style="font-size:11px">'+(o.qty?esc(o.qty)+' '+esc(o.unit||'MT'):'<span style="color:#94a3b8">&#8212;</span>')+'</td>' +
-      '<td style="font-size:11px">'+(o.buyer_price?esc(o.currency||'USD')+' '+esc(o.buyer_price):'<span style="color:#94a3b8">&#8212;</span>')+'</td>' +
-      '<td style="font-size:11px">'+(o.supplier_price?esc(o.currency||'USD')+' '+esc(o.supplier_price):'<span style="color:#94a3b8">&#8212;</span>')+'</td>' +
+      '<td>'+matChips+'</td>' +
+      '<td style="font-size:11px">'+qtyDisplay+'</td>' +
+      '<td style="font-size:11px">'+buyDisplay+'</td>' +
+      '<td style="font-size:11px">'+supDisplay+'</td>' +
       '<td>'+marginHtml+'</td>' +
       '<td><span class="badge badge-'+(ORDER_STATUS_CLASS[o.status]||'draft')+'">'+esc(o.status||'Draft')+'</span></td>' +
       '<td style="font-size:11px">'+esc(o.container_number||'&#8212;')+'</td>' +
@@ -1541,7 +1556,7 @@ function renderOrderPanel(o, payments, remarks) {
   const lineItemsHtml = lineItems.length > 1
     ? '<div style="margin-top:8px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">' +
       '<thead><tr style="background:#0f3d2e;color:#fff">' +
-      '<th style="padding:4px 8px;text-align:left">Material</th><th style="padding:4px 8px;text-align:right">Qty</th><th style="padding:4px 8px;text-align:right">Sup. Price</th><th style="padding:4px 8px;text-align:right">Value</th></tr></thead><tbody>' +
+      '<th style="padding:4px 8px;text-align:left;position:static;font-size:11px">Material</th><th style="padding:4px 8px;text-align:right;position:static;font-size:11px">Qty</th><th style="padding:4px 8px;text-align:right;position:static;font-size:11px">Sup. Price</th><th style="padding:4px 8px;text-align:right;position:static;font-size:11px">Value</th></tr></thead><tbody>' +
       lineItems.map(function(li,i){
         const q=parseFloat(li.qty||0), sp=parseFloat(li.supplier_price||0);
         return '<tr style="background:'+(i%2?'#f8fafc':'#fff')+'"><td style="padding:3px 8px">'+esc(li.material)+'</td><td style="padding:3px 8px;text-align:right">'+q.toFixed(3)+' '+(li.unit||'MT')+'</td><td style="padding:3px 8px;text-align:right">'+esc(li.currency||o.currency||'USD')+' '+sp.toLocaleString()+'/MT</td><td style="padding:3px 8px;text-align:right">'+(q*sp).toFixed(0)+'</td></tr>';
