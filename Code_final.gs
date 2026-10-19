@@ -4,6 +4,7 @@
 
 const SPREADSHEET_ID = '1rKJWsvOpSGkjO6uapsorNFv-WShe37-krDxIKJ6Cmzc';
 const ALLOWED_DOMAIN = 'recykal.com';
+const SHIPSGO_API_KEY = 'ca203286-25a8-4953-83bb-db5c96a0ea3e';
 
 function verifyToken(token) {
   if (!token) return null;
@@ -80,6 +81,7 @@ function doGet(e) {
         case 'getImportTransactions':   result = getImportTransactions(data);   break;
         case 'addImportTransaction':    result = addImportTransaction(data);    break;
         case 'updateImportTransaction': result = updateImportTransaction(data); break;
+        case 'getImportTxnDetail':      result = getImportTxnDetail(data);      break;
         case 'getImportDocs':           result = getImportDocs(data);           break;
         case 'updateImportDocs':        result = updateImportDocs(data);        break;
         case 'getImportPayments':       result = getImportPayments(data);       break;
@@ -88,6 +90,8 @@ function doGet(e) {
         case 'getImportLineItems':      result = getImportLineItems(data);      break;
         case 'addImportLineItem':       result = addImportLineItem(data);       break;
         case 'deleteImportLineItem':    result = deleteImportLineItem(data);    break;
+        case 'updateImportLineItem':   result = updateImportLineItem(data);    break;
+        case 'getContainerTracking':   result = getContainerTracking(data);    break;
         case 'getImportCosts':          result = getImportCosts(data);          break;
         case 'addImportCost':           result = addImportCost(data);           break;
         case 'deleteImportCost':        result = deleteImportCost(data);        break;
@@ -286,26 +290,30 @@ function getOrders(params) {
 
 function addOrder(data) {
   const sheet = getSheet('Orders');
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const id = Utilities.getUuid();
   const now = new Date().toISOString();
   const orderRef = data.order_ref || ('ORD-' + now.slice(0,10).replace(/-/g,'') + '-' + id.slice(0,4).toUpperCase());
-  sheet.appendRow([
-    id, orderRef,
-    data.buyer_lead_id || '', data.buyer_name || '',
-    data.supplier_lead_id || '', data.supplier_name || '',
-    data.material || '', data.qty || '', data.unit || 'MT',
-    data.currency || 'USD',
-    data.buyer_price || '', data.supplier_price || '',
-    data.incoterms || '', data.payment_terms || '',
-    data.status || 'Confirmed',
-    data.container_number || '', data.bl_number || '',
-    data.vessel_name || '', data.loading_port || '', data.discharge_port || '',
-    data.etd || '', data.eta || '',
-    data.notes || '',
-    data.line_items || '',
-    now, data.by, now, data.by
-  ]);
-  return { success: true, id, order_ref: orderRef };
+  const map = {
+    id, order_ref: orderRef,
+    buyer_lead_id: data.buyer_lead_id || '', buyer_name: data.buyer_name || '',
+    supplier_lead_id: data.supplier_lead_id || '', supplier_name: data.supplier_name || '',
+    material: data.material || '', qty: data.qty || '', unit: data.unit || 'MT',
+    currency: data.currency || 'USD',
+    buyer_price: data.buyer_price || '', supplier_price: data.supplier_price || '',
+    incoterms: data.incoterms || '', payment_terms: data.payment_terms || '',
+    costs: '', status: data.status || 'Confirmed',
+    container_number: data.container_number || '', bl_number: data.bl_number || '',
+    vessel_name: data.vessel_name || '', loading_port: data.loading_port || '',
+    discharge_port: data.discharge_port || '',
+    etd: data.etd || '', eta: data.eta || '',
+    notes: data.notes || '', line_items: data.line_items || '',
+    created_at: now, created_by: data.by || '',
+    updated_at: now, updated_by: data.by || ''
+  };
+  const row = headers.map(function(h){ return map[h] !== undefined ? map[h] : ''; });
+  sheet.appendRow(row);
+  return { success: true, id: id, order_ref: orderRef };
 }
 
 function updateOrder(data) {
@@ -449,6 +457,19 @@ function addOrderLineItemsColumn() {
   Logger.log('Done.');
 }
 
+// Run this once to add buyer_price column to existing ImportLineItems sheet
+function addLineItemBuyerPriceColumn() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName('ImportLineItems');
+  if (!sheet) { Logger.log('ImportLineItems sheet not found — run setupImportSheets() first'); return; }
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (!headers.includes('buyer_price')) {
+    sheet.getRange(1, sheet.getLastColumn() + 1).setValue('buyer_price');
+    Logger.log('Added buyer_price column');
+  }
+  Logger.log('Done.');
+}
+
 // ============================================================
 // IMPORT TRANSACTION TRACKER
 // ============================================================
@@ -485,7 +506,7 @@ function setupImportSheets() {
       'id','txn_id','doc_name','action','round','notes','actor','created_at'
     ],
     ImportLineItems: [
-      'id','txn_id','material','hsn','qty','unit','price','currency','amount','created_by','created_at'
+      'id','txn_id','material','hsn','qty','unit','price','buyer_price','currency','amount','created_by','created_at'
     ]
   };
   Object.keys(sheets).forEach(function(name) {
@@ -608,6 +629,40 @@ function updateImportTransaction(data) {
   return ok ? { success: true } : { error: 'Transaction not found' };
 }
 
+function updateImportLineItem(data) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName('ImportLineItems');
+  if (!sheet) return { success: false, error: 'Sheet not found' };
+  var rows = sheet.getDataRange().getValues();
+  var headers = rows[0];
+  var idCol = headers.indexOf('id');
+  var allowed = ['buyer_price','price','qty','hsn','material','unit','currency'];
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][idCol] === data.id) {
+      allowed.forEach(function(field) {
+        if (data[field] !== undefined) {
+          var col = headers.indexOf(field);
+          if (col >= 0) sheet.getRange(i+1, col+1).setValue(data[field]);
+        }
+      });
+      return { success: true };
+    }
+  }
+  return { success: false, error: 'Not found' };
+}
+
+function getImportTxnDetail(data) {
+  var id = data.txn_id;
+  if (!id) return { error: 'No txn_id' };
+  return {
+    docs:      impRows('ImportDocs').filter(function(r){ return r.txn_id === id; }),
+    payments:  impRows('ImportPayments').filter(function(r){ return r.txn_id === id; }),
+    costs:     impRows('ImportCosts').filter(function(r){ return r.txn_id === id; }),
+    timeline:  impRows('ImportTimeline').filter(function(r){ return r.txn_id === id; }),
+    items:     (function(){ try { return impRows('ImportLineItems').filter(function(r){ return r.txn_id === id; }); } catch(e){ return []; } })()
+  };
+}
+
 function getImportDocs(data) {
   return { docs: impRows('ImportDocs').filter(function(r) { return r.txn_id === data.txn_id; }) };
 }
@@ -704,6 +759,21 @@ function deleteImportLineItem(data) {
     if (rows[i][idCol] === data.id) { sheet.deleteRow(i + 1); return { success: true }; }
   }
   return { success: false, error: 'Not found' };
+}
+
+function getContainerTracking(data) {
+  if (!data.container) return { error: 'No container number provided' };
+  try {
+    var url = 'https://shipsgo.com/api/v1.2/ContainerService/GetContainerInfo?authCode='
+      + SHIPSGO_API_KEY + '&containerNo=' + encodeURIComponent(data.container);
+    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    var code = response.getResponseCode();
+    if (code !== 200) return { error: 'Shipsgo API error ' + code + ': ' + response.getContentText().substring(0, 200) };
+    var json = JSON.parse(response.getContentText());
+    return { success: true, tracking: json };
+  } catch(e) {
+    return { error: e.message };
+  }
 }
 
 function getImportCosts(data) {
