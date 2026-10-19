@@ -484,7 +484,26 @@
 <script>
 const API_URL = 'https://script.google.com/macros/s/AKfycbzjWcvonf3XxXWMF3S7ARt2Ie49vWk6mLFsF9zB-wa_fI4itzOmtIKRfiBhM7ugqBWpNw/exec';
 const ALLOWED_DOMAIN = 'recykal.com';
-let currentToken = '';
+let currentToken = '', currentUser = '';
+let orderCache = {}; // id -> {payments, remarks}
+const ORDER_CACHE_TTL     = 10 * 60 * 1000;
+const ORDER_CACHE_REFRESH =  2 * 60 * 1000;
+function saveOrderCache(id) {
+  try { localStorage.setItem('rclt_ord_'+id, JSON.stringify({data: orderCache[id], ts: Date.now()})); } catch(e) {}
+}
+function loadOrderCache(id) {
+  try {
+    const raw = localStorage.getItem('rclt_ord_'+id);
+    if (!raw) return null;
+    const entry = JSON.parse(raw);
+    if (Date.now() - entry.ts > ORDER_CACHE_TTL) { localStorage.removeItem('rclt_ord_'+id); return null; }
+    return entry;
+  } catch(e) { return null; }
+}
+function invalidateOrderCache(id) {
+  delete orderCache[id];
+  try { localStorage.removeItem('rclt_ord_'+id); } catch(e) {}
+}
 
 const TEAM = ['Iqbal Naseem','Prafulla Chandra','Rounak Jindal','Mayank Dixit','Kuldeep Jain','Kunal Miglani','Pritesh Makwana','Mayank Sanwal'];
 const MATERIALS = {
@@ -508,7 +527,7 @@ const STAGE_CLASS = {
 let currentTab = 'buyer';
 let allLeads = [], allRFQs = [];
 let rfqCache = {}, remarkCache = {}, rfqRemarkCache = {};
-let currentLead = null, currentUser = '';
+let currentLead = null;
 const dashCharts = {};
 
 // ── Auth ──
@@ -557,7 +576,8 @@ window.onload = function() {
     google.accounts.id.initialize({
       client_id: '990583974585-urcqsg4igf0m4r42h3srhr7qeodk6uk0.apps.googleusercontent.com',
       callback: handleCredentialResponse,
-      auto_select: false
+      auto_select: false,
+      use_fedcm_for_prompt: true
     });
     google.accounts.id.renderButton(
       document.querySelector('.g_id_signin'),
@@ -1525,12 +1545,27 @@ async function openOrder(id) {
   document.getElementById('panel-meta').textContent = (currentOrder.buyer_company||currentOrder.buyer_name||'') + ' → ' + (currentOrder.supplier_company||currentOrder.supplier_name||'') + ' · ' + (currentOrder.material||'');
   document.getElementById('overlay').classList.add('open');
   document.getElementById('panel').classList.add('open');
-  document.getElementById('panel-body').innerHTML = '<div style="padding:20px;color:#64748b"><span class="spinner"></span> Loading&#8230;</div>';
-  const [pr, rr] = await Promise.all([
-    api('getOrderPayments', {order_id: id}),
-    api('getOrderRemarks',  {order_id: id})
-  ]);
-  renderOrderPanel(currentOrder, pr.payments||[], rr.remarks||[]);
+
+  let cacheAge = Infinity;
+  if (!orderCache[id]) {
+    const entry = loadOrderCache(id);
+    if (entry && entry.data) { orderCache[id] = entry.data; cacheAge = Date.now() - (entry.ts||0); }
+  }
+  if (orderCache[id]) {
+    renderOrderPanel(currentOrder, orderCache[id].payments, orderCache[id].remarks);
+  } else {
+    document.getElementById('panel-body').innerHTML = '<div style="padding:20px;color:#64748b"><span class="spinner"></span> Loading&#8230;</div>';
+  }
+  if (cacheAge < ORDER_CACHE_REFRESH) return;
+  (async function() {
+    const [pr, rr] = await Promise.all([
+      api('getOrderPayments', {order_id: id}),
+      api('getOrderRemarks',  {order_id: id})
+    ]);
+    orderCache[id] = { payments: pr.payments||[], remarks: rr.remarks||[] };
+    saveOrderCache(id);
+    if (currentOrder && currentOrder.id === id) renderOrderPanel(currentOrder, orderCache[id].payments, orderCache[id].remarks);
+  })();
 }
 
 function renderOrderPanel(o, payments, remarks) {
