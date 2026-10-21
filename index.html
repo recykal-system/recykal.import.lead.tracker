@@ -558,7 +558,32 @@ function signOut() {
 }
 
 let _gisInited = false;
+function initGIS() {
+  if (_gisInited) return;
+  _gisInited = true;
+  google.accounts.id.initialize({
+    client_id: '990583974585-urcqsg4igf0m4r42h3srhr7qeodk6uk0.apps.googleusercontent.com',
+    callback: handleCredentialResponse,
+    auto_select: true,  // silently refreshes token on wake/reload
+    use_fedcm_for_prompt: true
+  });
+  google.accounts.id.renderButton(
+    document.querySelector('.g_id_signin'),
+    { type: 'standard', size: 'large', theme: 'outline', text: 'sign_in_with', shape: 'rectangular', logo_alignment: 'left' }
+  );
+}
+
+function silentRefresh() {
+  initGIS();
+  google.accounts.id.prompt(function(notification) {
+    if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+      document.getElementById('signin-page').style.display = 'flex';
+    }
+  });
+}
+
 window.onload = function() {
+  initGIS();
   const saved = localStorage.getItem('rclt_token');
   if (saved) {
     try {
@@ -571,20 +596,8 @@ window.onload = function() {
       }
     } catch(e) {}
   }
-  document.getElementById('signin-page').style.display = 'flex';
-  if (!_gisInited) {
-    _gisInited = true;
-    google.accounts.id.initialize({
-      client_id: '990583974585-urcqsg4igf0m4r42h3srhr7qeodk6uk0.apps.googleusercontent.com',
-      callback: handleCredentialResponse,
-      auto_select: false,
-      use_fedcm_for_prompt: true
-    });
-    google.accounts.id.renderButton(
-      document.querySelector('.g_id_signin'),
-      { type: 'standard', size: 'large', theme: 'outline', text: 'sign_in_with', shape: 'rectangular', logo_alignment: 'left' }
-    );
-  }
+  // Token missing or expired — try silent refresh before showing sign-in
+  silentRefresh();
 };
 
 // ── API ──
@@ -595,7 +608,22 @@ async function api(action, data, _retry) {
     const res = await fetch(url, { redirect: 'follow' });
     const text = await res.text();
     try {
-      return JSON.parse(text);
+      const json = JSON.parse(text);
+      if (json && json.error === 'Unauthorized' && !_retry) {
+        await new Promise(function(resolve) {
+          initGIS();
+          google.accounts.id.prompt(function(n) {
+            if (n.isNotDisplayed() || n.isSkippedMoment()) {
+              document.getElementById('signin-page').style.display = 'flex';
+            }
+            resolve();
+          });
+          setTimeout(resolve, 3000);
+        });
+        if (currentToken) return api(action, data, 1);
+        return json;
+      }
+      return json;
     } catch(e) {
       // Apps Script echo URL returned HTML (404/redirect) — retry up to 2 times
       if ((_retry||0) < 2) {
