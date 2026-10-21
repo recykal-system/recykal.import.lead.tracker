@@ -544,17 +544,33 @@ function handleCredentialResponse(response) {
   }
   currentToken = token; currentUser = payload.name;
   localStorage.setItem('rclt_token', token);
+  saveAppSession(payload.email, payload.name);
+  _tokenRefreshing = false;
+  _tokenResolvers.forEach(function(r){ r(true); }); _tokenResolvers = [];
   document.getElementById('signin-page').style.display = 'none';
   document.getElementById('user-display').textContent = payload.name + ' (' + payload.email + ')';
-  loadLeads();
+  if (!window._leadsLoaded) loadLeads();
 }
 
 function signOut() {
   localStorage.removeItem('rclt_token');
+  localStorage.removeItem('rclt_session');
   currentToken = ''; currentUser = '';
   google.accounts.id.disableAutoSelect();
   document.getElementById('signin-page').style.display = 'flex';
   document.getElementById('leads-body').innerHTML = '';
+}
+
+const SESSION_TTL = 30 * 24 * 60 * 60 * 1000;
+function getAppSession() {
+  try {
+    const s = JSON.parse(localStorage.getItem('rclt_session'));
+    if (s && s.expires > Date.now() && s.email && s.email.endsWith('@'+ALLOWED_DOMAIN)) return s;
+  } catch(e) {}
+  return null;
+}
+function saveAppSession(email, name) {
+  localStorage.setItem('rclt_session', JSON.stringify({ email, name, expires: Date.now() + SESSION_TTL }));
 }
 
 let _gisInited = false;
@@ -564,7 +580,7 @@ function initGIS() {
   google.accounts.id.initialize({
     client_id: '990583974585-urcqsg4igf0m4r42h3srhr7qeodk6uk0.apps.googleusercontent.com',
     callback: handleCredentialResponse,
-    auto_select: true,  // silently refreshes token on wake/reload
+    auto_select: true,
     use_fedcm_for_prompt: true
   });
   google.accounts.id.renderButton(
@@ -573,31 +589,44 @@ function initGIS() {
   );
 }
 
-function silentRefresh() {
-  initGIS();
-  google.accounts.id.prompt(function(notification) {
-    if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-      document.getElementById('signin-page').style.display = 'flex';
-    }
+let _tokenResolvers = [], _tokenRefreshing = false;
+function ensureFreshToken() {
+  const saved = localStorage.getItem('rclt_token');
+  if (saved) {
+    try {
+      const p = JSON.parse(atob(saved.split('.')[1]));
+      if (p.exp > Math.floor(Date.now()/1000) + 60) { currentToken = saved; return Promise.resolve(true); }
+    } catch(e) {}
+  }
+  if (_tokenRefreshing) return new Promise(function(r){ _tokenResolvers.push(r); });
+  _tokenRefreshing = true;
+  return new Promise(function(resolve) {
+    _tokenResolvers.push(resolve);
+    initGIS();
+    google.accounts.id.prompt(function(n) {
+      if (n.isNotDisplayed() || n.isSkippedMoment()) {
+        _tokenRefreshing = false;
+        _tokenResolvers.forEach(function(r){ r(false); }); _tokenResolvers = [];
+        document.getElementById('signin-page').style.display = 'flex';
+      }
+    });
   });
 }
 
 window.onload = function() {
   initGIS();
-  const saved = localStorage.getItem('rclt_token');
-  if (saved) {
-    try {
-      const payload = JSON.parse(atob(saved.split('.')[1]));
-      if (payload.exp >= Math.floor(Date.now()/1000) && payload.email.endsWith('@'+ALLOWED_DOMAIN)) {
-        currentToken = saved; currentUser = payload.name;
-        document.getElementById('signin-page').style.display = 'none';
-        document.getElementById('user-display').textContent = payload.name + ' (' + payload.email + ')';
-        loadLeads(); return;
-      }
-    } catch(e) {}
+  const session = getAppSession();
+  if (session) {
+    currentUser = session.name;
+    document.getElementById('user-display').textContent = session.name + ' (' + session.email + ')';
+    document.getElementById('signin-page').style.display = 'none';
+    loadLeads();
+    ensureFreshToken(); // background refresh
+    return;
   }
-  // Token missing or expired — try silent refresh before showing sign-in
-  silentRefresh();
+  ensureFreshToken().then(function(ok) {
+    if (!ok) document.getElementById('signin-page').style.display = 'flex';
+  });
 };
 
 // ── API ──
@@ -610,17 +639,8 @@ async function api(action, data, _retry) {
     try {
       const json = JSON.parse(text);
       if (json && json.error === 'Unauthorized' && !_retry) {
-        await new Promise(function(resolve) {
-          initGIS();
-          google.accounts.id.prompt(function(n) {
-            if (n.isNotDisplayed() || n.isSkippedMoment()) {
-              document.getElementById('signin-page').style.display = 'flex';
-            }
-            resolve();
-          });
-          setTimeout(resolve, 3000);
-        });
-        if (currentToken) return api(action, data, 1);
+        const ok = await ensureFreshToken();
+        if (ok && currentToken) return api(action, data, 1);
         return json;
       }
       return json;
