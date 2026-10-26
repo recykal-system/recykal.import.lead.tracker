@@ -1132,7 +1132,9 @@ async function saveEditRFQ(rfqId) {
     if (card) card.outerHTML = rfqCard(cache[idx]);
 
     // If Converted and buyer+supplier both set, create/update order
-    if (payload.status === 'Converted' && buyerId && supplierId) {
+    if (payload.status === 'Converted' && (!buyerId || !supplierId)) {
+      showToast('RFQ marked Converted but no order created — select both Buyer and Supplier first.', 'error');
+    } else if (payload.status === 'Converted' && buyerId && supplierId) {
       const oRes = await api('addOrder', {
         buyer_lead_id: buyerId,
         buyer_name: payload.buyer_name,
@@ -1153,6 +1155,8 @@ async function saveEditRFQ(rfqId) {
       });
       if (oRes && oRes.success) {
         localStorage.removeItem('rclt_orders');
+        // Refresh allOrders so the Orders tab shows the new order immediately
+        fetchAll().then(function(r) { allOrders = r.orders || allOrders; }).catch(function(){});
         showToast('Order created from RFQ');
       }
     }
