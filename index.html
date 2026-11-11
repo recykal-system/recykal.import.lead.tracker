@@ -510,6 +510,7 @@ const MATERIALS = {
   Copper:    ['Milberry','Candy','Birch','No 1 Copper','No 2 Copper','Cathode','Wire','Utensil','Berry'],
   Brass:     ['Honey','Label','Hairwire','Ebony','White','Yellow'],
   Aluminium: ['UBC','Tense','TT','Extrusion-6061','Zorba','Wire','TRUMP'],
+  Zinc:      ['Zinc Ingot','Zinc Die Casting'],
   Lead:      ['Lead Scrap','Re-melted Lead','Lead Ingot','Dry Battery (Rains)'],
   Ferrous:   ['Heavy Melting','Stainless Steel Scrap'],
   Plastic:   ['HDPE','PET Flakes']
@@ -934,7 +935,7 @@ async function saveEditLead(id) {
 }
 
 function openAddRFQ() {
-  const matOptions = ALL_MATERIALS.map(function(m){return '<option>'+m+'</option>';}).join('');
+  const matOptions = Object.entries(MATERIALS).map(function(entry){return '<optgroup label="'+entry[0]+'">'+entry[1].map(function(m){return '<option>'+m+'</option>';}).join('')+'</optgroup>';}).join('');
   document.getElementById('rfq-list').insertAdjacentHTML('afterbegin',
     '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px;margin-bottom:12px" id="add-rfq-form">' +
     '<div style="font-size:12px;font-weight:700;color:#0f3d2e;margin-bottom:8px">New RFQ</div>' +
@@ -987,7 +988,7 @@ function toggleEditRFQ(rfqId) {
     return '<option value="'+esc(l.id)+'"'+sel+'>'+esc(l.company_name)+' ('+esc(l.country)+')</option>';
   }).join('');
 
-  const matOptions = ALL_MATERIALS.map(function(m){return '<option'+(m===rfq.material?' selected':'')+'>'+m+'</option>';}).join('');
+  const matOptions = Object.entries(MATERIALS).map(function(entry){return '<optgroup label="'+entry[0]+'">'+entry[1].map(function(m){return '<option'+(m===rfq.material?' selected':'')+'>'+m+'</option>';}).join('')+'</optgroup>';}).join('');
   const isConverted = rfq.status === 'Converted';
 
   el.innerHTML='<div style="border-top:1px solid #e2e8f0;margin-top:8px;padding-top:8px"><div class="form-grid three">' +
@@ -1778,7 +1779,7 @@ async function addOrderRemark(orderId) {
 
 function openEditOrder() {
   const o = currentOrder;
-  const matOptions = ALL_MATERIALS.map(function(m){return '<option'+(m===o.material?' selected':'')+'>'+m+'</option>';}).join('');
+  const matOptions = Object.entries(MATERIALS).map(function(entry){return '<optgroup label="'+entry[0]+'">'+entry[1].map(function(m){return '<option'+(m===o.material?' selected':'')+'>'+m+'</option>';}).join('')+'</optgroup>';}).join('');
   const buyerOptions = '<option value="">&#8212;</option>' + buyerLeadsList.map(function(l){return '<option value="'+esc(l.id)+'"'+(l.id===o.buyer_lead_id?' selected':'')+'>'+esc(l.company_name)+' ('+esc(l.country)+')</option>';}).join('');
   const supplierOptions = '<option value="">&#8212;</option>' + supplierLeadsList.map(function(l){return '<option value="'+esc(l.id)+'"'+(l.id===o.supplier_lead_id?' selected':'')+'>'+esc(l.company_name)+' ('+esc(l.country)+')</option>';}).join('');
   document.getElementById('panel-body').innerHTML =
@@ -2002,7 +2003,10 @@ function closeAddOrderModal() {
 }
 
 function _matOptions(selected) {
-  return '<option value="">Select&#8230;</option>' + ALL_MATERIALS.map(function(m){return '<option'+(m===selected?' selected':'')+'>'+m+'</option>';}).join('');
+  return '<option value="">Select&#8230;</option>' + Object.entries(MATERIALS).map(function(entry){
+    var group = entry[0], items = entry[1];
+    return '<optgroup label="'+group+'">'+items.map(function(m){return '<option'+(m===selected?' selected':'')+'>'+m+'</option>';}).join('')+'</optgroup>';
+  }).join('');
 }
 
 let _lineRowIdx = 0;
